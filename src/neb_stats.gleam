@@ -1,12 +1,13 @@
+import data/report.{dummy_report}
 import gleam/option.{type Option, None, Some}
 import lustre
 import lustre/attribute.{class, type_}
 import lustre/element/html.{div, form, input, text}
 import lustre/event.{on_change}
-import pages/report
+import pages/report as report_page
 
 type AppState {
-  AppState(report: Option(report.PageState))
+  AppState(report: Option(report_page.PageState))
 }
 
 type Msg {
@@ -26,14 +27,15 @@ fn init(_flags) {
 
 fn update(state, msg: Msg) {
   case msg {
-    UploadReport(content) -> state
+    UploadReport(content) ->
+      AppState(..state, report: Some(report_page.init(dummy_report())))
   }
 }
 
 fn view(state: AppState) {
   case state.report {
     None -> upload_form()
-    Some(report) -> report.view(report)
+    Some(report) -> report_page.view(report)
   }
 }
 

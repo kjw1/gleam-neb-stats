@@ -4190,7 +4190,7 @@ var Config2 = class extends CustomType {
   }
 };
 function new$6(options) {
-  let init2 = new Config2(
+  let init3 = new Config2(
     false,
     true,
     empty_dict(),
@@ -4202,7 +4202,7 @@ function new$6(options) {
   );
   return fold(
     options,
-    init2,
+    init3,
     (config, option) => {
       return option.apply(config);
     }
@@ -4211,15 +4211,15 @@ function new$6(options) {
 
 // build/dev/javascript/lustre/lustre/runtime/client/spa.ffi.mjs
 var Spa = class _Spa {
-  static start({ init: init2, update: update3, view: view3 }, selector, flags) {
+  static start({ init: init3, update: update3, view: view3 }, selector, flags) {
     if (!is_browser()) return new Error(new NotABrowser());
     const root3 = selector instanceof HTMLElement ? selector : document.querySelector(selector);
     if (!root3) return new Error(new ElementNotFound(selector));
-    return new Ok(new _Spa(root3, init2(flags), update3, view3));
+    return new Ok(new _Spa(root3, init3(flags), update3, view3));
   }
   #runtime;
-  constructor(root3, [init2, effects], update3, view3) {
-    this.#runtime = new Runtime(root3, [init2, effects], view3, update3);
+  constructor(root3, [init3, effects], update3, view3) {
+    this.#runtime = new Runtime(root3, [init3, effects], view3, update3);
   }
   send(message) {
     switch (message.constructor) {
@@ -4246,9 +4246,9 @@ var start = Spa.start;
 
 // build/dev/javascript/lustre/lustre.mjs
 var App = class extends CustomType {
-  constructor(init2, update3, view3, config) {
+  constructor(init3, update3, view3, config) {
     super();
-    this.init = init2;
+    this.init = init3;
     this.update = update3;
     this.view = view3;
     this.config = config;
@@ -4262,12 +4262,12 @@ var ElementNotFound = class extends CustomType {
 };
 var NotABrowser = class extends CustomType {
 };
-function application(init2, update3, view3) {
-  return new App(init2, update3, view3, new$6(empty_list));
+function application(init3, update3, view3) {
+  return new App(init3, update3, view3, new$6(empty_list));
 }
-function simple(init2, update3, view3) {
+function simple(init3, update3, view3) {
   let init$1 = (start_args) => {
-    return [init2(start_args), none()];
+    return [init3(start_args), none()];
   };
   let update$1 = (model, msg) => {
     return [update3(model, msg), none()];
@@ -4329,7 +4329,55 @@ function on_change(msg) {
   );
 }
 
+// build/dev/javascript/neb_stats/data/report.mjs
+var Ship = class extends CustomType {
+  constructor(name, class$2) {
+    super();
+    this.name = name;
+    this.class = class$2;
+  }
+};
+var Player = class extends CustomType {
+  constructor(name, ships) {
+    super();
+    this.name = name;
+    this.ships = ships;
+  }
+};
+var Team = class extends CustomType {
+  constructor(players) {
+    super();
+    this.players = players;
+  }
+};
+var Report = class extends CustomType {
+  constructor(team_a, team_b) {
+    super();
+    this.team_a = team_a;
+    this.team_b = team_b;
+  }
+};
+function dummy_report() {
+  return new Report(
+    new Team(
+      toList([new Player("Alice", toList([new Ship("Ship A", "Class A")]))])
+    ),
+    new Team(
+      toList([new Player("Bob", toList([new Ship("Ship B", "Class B")]))])
+    )
+  );
+}
+
 // build/dev/javascript/neb_stats/pages/report.mjs
+var PageState = class extends CustomType {
+  constructor(report) {
+    super();
+    this.report = report;
+  }
+};
+function init(report) {
+  return new PageState(report);
+}
 function ship_card(ship) {
   return div(
     toList([class$("card")]),
@@ -4347,12 +4395,44 @@ function ship_card(ship) {
     ])
   );
 }
+function player_box(player) {
+  return div(
+    toList([class$("box")]),
+    toList([
+      div(
+        toList([class$("content")]),
+        prepend(
+          text3(player.name),
+          (() => {
+            let _pipe = player.ships;
+            return map(_pipe, ship_card);
+          })()
+        )
+      )
+    ])
+  );
+}
+function team_box(team, team_name) {
+  return div(
+    toList([class$("box")]),
+    toList([
+      div(
+        toList([class$("content")]),
+        prepend(
+          text3(team_name),
+          (() => {
+            let _pipe = team.players;
+            return map(_pipe, player_box);
+          })()
+        )
+      )
+    ])
+  );
+}
 function view(state) {
-  let _block;
-  let _pipe = state.ships;
-  _block = map(_pipe, ship_card);
-  let ship_cards = _block;
-  return div(toList([class$("box")]), ship_cards);
+  let team_a_box = team_box(state.report.team_a, "Team A");
+  let team_b_box = team_box(state.report.team_b, "Team B");
+  return div(toList([class$("box")]), toList([team_a_box, team_b_box]));
 }
 
 // build/dev/javascript/neb_stats/neb_stats.mjs
@@ -4368,13 +4448,14 @@ var UploadReport = class extends CustomType {
     this[0] = x0;
   }
 };
-function init(_) {
+function init2(_) {
   return new AppState(new None());
 }
 function update2(state, msg) {
   {
     let content = msg[0];
-    return state;
+    let _record = state;
+    return new AppState(new Some(init(dummy_report())));
   }
 }
 function upload_form() {
@@ -4398,13 +4479,13 @@ function view2(state) {
   }
 }
 function main() {
-  let app = simple(init, update2, view2);
+  let app = simple(init2, update2, view2);
   let $ = start3(app, "#app", void 0);
   if (!$.isOk()) {
     throw makeError(
       "let_assert",
       "neb_stats",
-      18,
+      19,
       "main",
       "Pattern match failed, no pattern matched the value.",
       { value: $ }

@@ -1,24 +1,38 @@
-import data/report.{type Ship, Ship}
+import data/report.{type Player, type Report, type Ship, type Team}
 import gleam/list
 import lustre/attribute.{class}
 import lustre/element/html.{div, p, text}
 
 pub type PageState {
-  PageState(ships: List(Ship))
+  PageState(report: Report)
 }
 
-pub fn init() {
-  PageState(ships: [
-    Ship(name: "Potato", class: "Potato"),
-    Ship(name: "Carrot", class: "Carrot"),
-    Ship(name: "Tomato", class: "Tomato"),
-    Ship(name: "Cucumber", class: "Cucumber"),
-  ])
+pub fn init(report: Report) {
+  PageState(report: report)
 }
 
 pub fn view(state: PageState) {
-  let ship_cards = state.ships |> list.map(ship_card)
-  div([class("box")], ship_cards)
+  let team_a_box = team_box(state.report.team_a, "Team A")
+  let team_b_box = team_box(state.report.team_b, "Team B")
+  div([class("box")], [team_a_box, team_b_box])
+}
+
+fn team_box(team: Team, team_name: String) {
+  div([class("box")], [
+    div([class("content")], [
+      text(team_name),
+      ..{ team.players |> list.map(player_box) }
+    ]),
+  ])
+}
+
+fn player_box(player: Player) {
+  div([class("box")], [
+    div([class("content")], [
+      text(player.name),
+      ..{ player.ships |> list.map(ship_card) }
+    ]),
+  ])
 }
 
 fn ship_card(ship: Ship) {
