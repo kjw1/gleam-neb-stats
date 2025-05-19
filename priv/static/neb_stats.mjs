@@ -1750,6 +1750,9 @@ function attribute2(name, value) {
 function class$(name) {
   return attribute2("class", name);
 }
+function type_(control_type) {
+  return attribute2("type", control_type);
+}
 
 // build/dev/javascript/lustre/lustre/effect.mjs
 var Effect = class extends CustomType {
@@ -3307,13 +3310,13 @@ var createServerEvent = (event2, include = []) => {
   }
   for (const property3 of include) {
     const path = property3.split(".");
-    for (let i = 0, input = event2, output = data; i < path.length; i++) {
+    for (let i = 0, input2 = event2, output = data; i < path.length; i++) {
       if (i === path.length - 1) {
-        output[path[i]] = input[path[i]];
+        output[path[i]] = input2[path[i]];
         break;
       }
       output = output[path[i]] ??= {};
-      input = input[path[i]];
+      input2 = input2[path[i]];
     }
   }
   return data;
@@ -3895,6 +3898,15 @@ function text3(content) {
 function div(attrs, children) {
   return element2("div", attrs, children);
 }
+function p(attrs, children) {
+  return element2("p", attrs, children);
+}
+function form(attrs, children) {
+  return element2("form", attrs, children);
+}
+function input(attrs) {
+  return element2("input", attrs, empty_list);
+}
 
 // build/dev/javascript/lustre/lustre/runtime/server/runtime.mjs
 var EffectDispatchedMessage = class extends CustomType {
@@ -3928,7 +3940,7 @@ var Config2 = class extends CustomType {
   }
 };
 function new$6(options) {
-  let init3 = new Config2(
+  let init2 = new Config2(
     false,
     true,
     empty_dict(),
@@ -3940,7 +3952,7 @@ function new$6(options) {
   );
   return fold(
     options,
-    init3,
+    init2,
     (config, option) => {
       return option.apply(config);
     }
@@ -3949,15 +3961,15 @@ function new$6(options) {
 
 // build/dev/javascript/lustre/lustre/runtime/client/spa.ffi.mjs
 var Spa = class _Spa {
-  static start({ init: init3, update: update3, view: view3 }, selector, flags) {
+  static start({ init: init2, update: update3, view: view3 }, selector, flags) {
     if (!is_browser()) return new Error(new NotABrowser());
     const root3 = selector instanceof HTMLElement ? selector : document.querySelector(selector);
     if (!root3) return new Error(new ElementNotFound(selector));
-    return new Ok(new _Spa(root3, init3(flags), update3, view3));
+    return new Ok(new _Spa(root3, init2(flags), update3, view3));
   }
   #runtime;
-  constructor(root3, [init3, effects], update3, view3) {
-    this.#runtime = new Runtime(root3, [init3, effects], view3, update3);
+  constructor(root3, [init2, effects], update3, view3) {
+    this.#runtime = new Runtime(root3, [init2, effects], view3, update3);
   }
   send(message) {
     switch (message.constructor) {
@@ -3984,9 +3996,9 @@ var start = Spa.start;
 
 // build/dev/javascript/lustre/lustre.mjs
 var App = class extends CustomType {
-  constructor(init3, update3, view3, config) {
+  constructor(init2, update3, view3, config) {
     super();
-    this.init = init3;
+    this.init = init2;
     this.update = update3;
     this.view = view3;
     this.config = config;
@@ -4000,12 +4012,12 @@ var ElementNotFound = class extends CustomType {
 };
 var NotABrowser = class extends CustomType {
 };
-function application(init3, update3, view3) {
-  return new App(init3, update3, view3, new$6(empty_list));
+function application(init2, update3, view3) {
+  return new App(init2, update3, view3, new$6(empty_list));
 }
-function simple(init3, update3, view3) {
+function simple(init2, update3, view3) {
   let init$1 = (start_args) => {
-    return [init3(start_args), none()];
+    return [init2(start_args), none()];
   };
   let update$1 = (model, msg) => {
     return [update3(model, msg), none()];
@@ -4022,38 +4034,21 @@ function start3(app, selector, start_args) {
   );
 }
 
-// build/dev/javascript/neb_stats/report_types.mjs
-var Ship = class extends CustomType {
-  constructor(name, class$2) {
-    super();
-    this.name = name;
-    this.class = class$2;
-  }
-};
-
 // build/dev/javascript/neb_stats/pages/report.mjs
-var PageState = class extends CustomType {
-  constructor(ships) {
-    super();
-    this.ships = ships;
-  }
-};
-function init() {
-  return new PageState(
-    toList([
-      new Ship("Potato", "Potato"),
-      new Ship("Carrot", "Carrot"),
-      new Ship("Tomato", "Tomato"),
-      new Ship("Cucumber", "Cucumber")
-    ])
-  );
-}
 function ship_card(ship) {
   return div(
     toList([class$("card")]),
     toList([
-      div(toList([class$("card-header")]), toList([text3(ship.name)])),
-      div(toList([class$("card-content")]), toList([text3(ship.class)]))
+      div(
+        toList([class$("card-header")]),
+        toList([
+          p(toList([class$("card-header-title")]), toList([text3(ship.name)]))
+        ])
+      ),
+      div(
+        toList([class$("card-content")]),
+        toList([div(toList([class$("content")]), toList([text3(ship.class)]))])
+      )
     ])
   );
 }
@@ -4066,23 +4061,41 @@ function view(state) {
 }
 
 // build/dev/javascript/neb_stats/neb_stats.mjs
-function init2(_) {
-  return init();
+var AppState = class extends CustomType {
+  constructor(report) {
+    super();
+    this.report = report;
+  }
+};
+function init(_) {
+  return new AppState(new None());
 }
 function update2(state, _) {
   return state;
 }
+function upload_form() {
+  return form(
+    toList([class$("box")]),
+    toList([input(toList([class$("input"), type_("file")]))])
+  );
+}
 function view2(state) {
-  return view(state);
+  let $ = state.report;
+  if ($ instanceof None) {
+    return upload_form();
+  } else {
+    let report = $[0];
+    return view(report);
+  }
 }
 function main() {
-  let app = simple(init2, update2, view2);
+  let app = simple(init, update2, view2);
   let $ = start3(app, "#app", void 0);
   if (!$.isOk()) {
     throw makeError(
       "let_assert",
       "neb_stats",
-      6,
+      13,
       "main",
       "Pattern match failed, no pattern matched the value.",
       { value: $ }

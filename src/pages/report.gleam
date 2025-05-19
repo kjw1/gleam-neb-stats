@@ -1,6 +1,6 @@
 import gleam/list
 import lustre/attribute.{class}
-import lustre/element/html.{div, text}
+import lustre/element/html.{div, p, text}
 import report_types
 
 pub type PageState {
@@ -23,7 +23,9 @@ pub fn view(state: PageState) {
 
 fn ship_card(ship: report_types.Ship) {
   div([class("card")], [
-    div([class("card-header")], [text(ship.name)]),
-    div([class("card-content")], [text(ship.class)]),
+    div([class("card-header")], [
+      p([class("card-header-title")], [text(ship.name)]),
+    ]),
+    div([class("card-content")], [div([class("content")], [text(ship.class)])]),
   ])
 }
