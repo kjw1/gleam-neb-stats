@@ -2,10 +2,15 @@ import gleam/option.{type Option, None, Some}
 import lustre
 import lustre/attribute.{class, type_}
 import lustre/element/html.{div, form, input, text}
+import lustre/event.{on_change}
 import pages/report
 
 type AppState {
   AppState(report: Option(report.PageState))
+}
+
+type Msg {
+  UploadReport(String)
 }
 
 pub fn main() {
@@ -19,8 +24,10 @@ fn init(_flags) {
   AppState(report: None)
 }
 
-fn update(state, _msg) {
-  state
+fn update(state, msg: Msg) {
+  case msg {
+    UploadReport(content) -> state
+  }
 }
 
 fn view(state: AppState) {
@@ -31,5 +38,7 @@ fn view(state: AppState) {
 }
 
 fn upload_form() {
-  form([class("box")], [input([class("input"), type_("file")])])
+  form([class("box"), on_change(UploadReport)], [
+    input([class("input"), type_("file")]),
+  ])
 }

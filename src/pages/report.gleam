@@ -1,18 +1,18 @@
+import data/report.{type Ship, Ship}
 import gleam/list
 import lustre/attribute.{class}
 import lustre/element/html.{div, p, text}
-import report_types
 
 pub type PageState {
-  PageState(ships: List(report_types.Ship))
+  PageState(ships: List(Ship))
 }
 
 pub fn init() {
   PageState(ships: [
-    report_types.Ship(name: "Potato", class: "Potato"),
-    report_types.Ship(name: "Carrot", class: "Carrot"),
-    report_types.Ship(name: "Tomato", class: "Tomato"),
-    report_types.Ship(name: "Cucumber", class: "Cucumber"),
+    Ship(name: "Potato", class: "Potato"),
+    Ship(name: "Carrot", class: "Carrot"),
+    Ship(name: "Tomato", class: "Tomato"),
+    Ship(name: "Cucumber", class: "Cucumber"),
   ])
 }
 
@@ -21,7 +21,7 @@ pub fn view(state: PageState) {
   div([class("box")], ship_cards)
 }
 
-fn ship_card(ship: report_types.Ship) {
+fn ship_card(ship: Ship) {
   div([class("card")], [
     div([class("card-header")], [
       p([class("card-header-title")], [text(ship.name)]),
