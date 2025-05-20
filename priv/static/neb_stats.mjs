@@ -272,6 +272,83 @@ function bitArrayPrintDeprecationWarning(name, message) {
   );
   isBitArrayDeprecationMessagePrinted[name] = true;
 }
+function bitArraySlice(bitArray, start4, end) {
+  end ??= bitArray.bitSize;
+  bitArrayValidateRange(bitArray, start4, end);
+  if (start4 === end) {
+    return new BitArray(new Uint8Array());
+  }
+  if (start4 === 0 && end === bitArray.bitSize) {
+    return bitArray;
+  }
+  start4 += bitArray.bitOffset;
+  end += bitArray.bitOffset;
+  const startByteIndex = Math.trunc(start4 / 8);
+  const endByteIndex = Math.trunc((end + 7) / 8);
+  const byteLength = endByteIndex - startByteIndex;
+  let buffer;
+  if (startByteIndex === 0 && byteLength === bitArray.rawBuffer.byteLength) {
+    buffer = bitArray.rawBuffer;
+  } else {
+    buffer = new Uint8Array(
+      bitArray.rawBuffer.buffer,
+      bitArray.rawBuffer.byteOffset + startByteIndex,
+      byteLength
+    );
+  }
+  return new BitArray(buffer, end - start4, start4 % 8);
+}
+function bitArraySliceToInt(bitArray, start4, end, isBigEndian, isSigned) {
+  bitArrayValidateRange(bitArray, start4, end);
+  if (start4 === end) {
+    return 0;
+  }
+  start4 += bitArray.bitOffset;
+  end += bitArray.bitOffset;
+  const isStartByteAligned = start4 % 8 === 0;
+  const isEndByteAligned = end % 8 === 0;
+  if (isStartByteAligned && isEndByteAligned) {
+    return intFromAlignedSlice(
+      bitArray,
+      start4 / 8,
+      end / 8,
+      isBigEndian,
+      isSigned
+    );
+  }
+  const size2 = end - start4;
+  const startByteIndex = Math.trunc(start4 / 8);
+  const endByteIndex = Math.trunc((end - 1) / 8);
+  if (startByteIndex == endByteIndex) {
+    const mask2 = 255 >> start4 % 8;
+    const unusedLowBitCount = (8 - end % 8) % 8;
+    let value = (bitArray.rawBuffer[startByteIndex] & mask2) >> unusedLowBitCount;
+    if (isSigned) {
+      const highBit = 2 ** (size2 - 1);
+      if (value >= highBit) {
+        value -= highBit * 2;
+      }
+    }
+    return value;
+  }
+  if (size2 <= 53) {
+    return intFromUnalignedSliceUsingNumber(
+      bitArray.rawBuffer,
+      start4,
+      end,
+      isBigEndian,
+      isSigned
+    );
+  } else {
+    return intFromUnalignedSliceUsingBigInt(
+      bitArray.rawBuffer,
+      start4,
+      end,
+      isBigEndian,
+      isSigned
+    );
+  }
+}
 function toBitArray(segments) {
   if (segments.length === 0) {
     return new BitArray(new Uint8Array());
@@ -373,6 +450,200 @@ function toBitArray(segments) {
     }
   }
   return new BitArray(buffer, bitSize);
+}
+function intFromAlignedSlice(bitArray, start4, end, isBigEndian, isSigned) {
+  const byteSize = end - start4;
+  if (byteSize <= 6) {
+    return intFromAlignedSliceUsingNumber(
+      bitArray.rawBuffer,
+      start4,
+      end,
+      isBigEndian,
+      isSigned
+    );
+  } else {
+    return intFromAlignedSliceUsingBigInt(
+      bitArray.rawBuffer,
+      start4,
+      end,
+      isBigEndian,
+      isSigned
+    );
+  }
+}
+function intFromAlignedSliceUsingNumber(buffer, start4, end, isBigEndian, isSigned) {
+  const byteSize = end - start4;
+  let value = 0;
+  if (isBigEndian) {
+    for (let i = start4; i < end; i++) {
+      value *= 256;
+      value += buffer[i];
+    }
+  } else {
+    for (let i = end - 1; i >= start4; i--) {
+      value *= 256;
+      value += buffer[i];
+    }
+  }
+  if (isSigned) {
+    const highBit = 2 ** (byteSize * 8 - 1);
+    if (value >= highBit) {
+      value -= highBit * 2;
+    }
+  }
+  return value;
+}
+function intFromAlignedSliceUsingBigInt(buffer, start4, end, isBigEndian, isSigned) {
+  const byteSize = end - start4;
+  let value = 0n;
+  if (isBigEndian) {
+    for (let i = start4; i < end; i++) {
+      value *= 256n;
+      value += BigInt(buffer[i]);
+    }
+  } else {
+    for (let i = end - 1; i >= start4; i--) {
+      value *= 256n;
+      value += BigInt(buffer[i]);
+    }
+  }
+  if (isSigned) {
+    const highBit = 1n << BigInt(byteSize * 8 - 1);
+    if (value >= highBit) {
+      value -= highBit * 2n;
+    }
+  }
+  return Number(value);
+}
+function intFromUnalignedSliceUsingNumber(buffer, start4, end, isBigEndian, isSigned) {
+  const isStartByteAligned = start4 % 8 === 0;
+  let size2 = end - start4;
+  let byteIndex = Math.trunc(start4 / 8);
+  let value = 0;
+  if (isBigEndian) {
+    if (!isStartByteAligned) {
+      const leadingBitsCount = 8 - start4 % 8;
+      value = buffer[byteIndex++] & (1 << leadingBitsCount) - 1;
+      size2 -= leadingBitsCount;
+    }
+    while (size2 >= 8) {
+      value *= 256;
+      value += buffer[byteIndex++];
+      size2 -= 8;
+    }
+    if (size2 > 0) {
+      value *= 2 ** size2;
+      value += buffer[byteIndex] >> 8 - size2;
+    }
+  } else {
+    if (isStartByteAligned) {
+      let size3 = end - start4;
+      let scale = 1;
+      while (size3 >= 8) {
+        value += buffer[byteIndex++] * scale;
+        scale *= 256;
+        size3 -= 8;
+      }
+      value += (buffer[byteIndex] >> 8 - size3) * scale;
+    } else {
+      const highBitsCount = start4 % 8;
+      const lowBitsCount = 8 - highBitsCount;
+      let size3 = end - start4;
+      let scale = 1;
+      while (size3 >= 8) {
+        const byte = buffer[byteIndex] << highBitsCount | buffer[byteIndex + 1] >> lowBitsCount;
+        value += (byte & 255) * scale;
+        scale *= 256;
+        size3 -= 8;
+        byteIndex++;
+      }
+      if (size3 > 0) {
+        const lowBitsUsed = size3 - Math.max(0, size3 - lowBitsCount);
+        let trailingByte = (buffer[byteIndex] & (1 << lowBitsCount) - 1) >> lowBitsCount - lowBitsUsed;
+        size3 -= lowBitsUsed;
+        if (size3 > 0) {
+          trailingByte *= 2 ** size3;
+          trailingByte += buffer[byteIndex + 1] >> 8 - size3;
+        }
+        value += trailingByte * scale;
+      }
+    }
+  }
+  if (isSigned) {
+    const highBit = 2 ** (end - start4 - 1);
+    if (value >= highBit) {
+      value -= highBit * 2;
+    }
+  }
+  return value;
+}
+function intFromUnalignedSliceUsingBigInt(buffer, start4, end, isBigEndian, isSigned) {
+  const isStartByteAligned = start4 % 8 === 0;
+  let size2 = end - start4;
+  let byteIndex = Math.trunc(start4 / 8);
+  let value = 0n;
+  if (isBigEndian) {
+    if (!isStartByteAligned) {
+      const leadingBitsCount = 8 - start4 % 8;
+      value = BigInt(buffer[byteIndex++] & (1 << leadingBitsCount) - 1);
+      size2 -= leadingBitsCount;
+    }
+    while (size2 >= 8) {
+      value *= 256n;
+      value += BigInt(buffer[byteIndex++]);
+      size2 -= 8;
+    }
+    if (size2 > 0) {
+      value <<= BigInt(size2);
+      value += BigInt(buffer[byteIndex] >> 8 - size2);
+    }
+  } else {
+    if (isStartByteAligned) {
+      let size3 = end - start4;
+      let shift = 0n;
+      while (size3 >= 8) {
+        value += BigInt(buffer[byteIndex++]) << shift;
+        shift += 8n;
+        size3 -= 8;
+      }
+      value += BigInt(buffer[byteIndex] >> 8 - size3) << shift;
+    } else {
+      const highBitsCount = start4 % 8;
+      const lowBitsCount = 8 - highBitsCount;
+      let size3 = end - start4;
+      let shift = 0n;
+      while (size3 >= 8) {
+        const byte = buffer[byteIndex] << highBitsCount | buffer[byteIndex + 1] >> lowBitsCount;
+        value += BigInt(byte & 255) << shift;
+        shift += 8n;
+        size3 -= 8;
+        byteIndex++;
+      }
+      if (size3 > 0) {
+        const lowBitsUsed = size3 - Math.max(0, size3 - lowBitsCount);
+        let trailingByte = (buffer[byteIndex] & (1 << lowBitsCount) - 1) >> lowBitsCount - lowBitsUsed;
+        size3 -= lowBitsUsed;
+        if (size3 > 0) {
+          trailingByte <<= size3;
+          trailingByte += buffer[byteIndex + 1] >> 8 - size3;
+        }
+        value += BigInt(trailingByte) << shift;
+      }
+    }
+  }
+  if (isSigned) {
+    const highBit = 2n ** BigInt(end - start4 - 1);
+    if (value >= highBit) {
+      value -= highBit * 2n;
+    }
+  }
+  return Number(value);
+}
+function bitArrayValidateRange(bitArray, start4, end) {
+  if (start4 < 0 || start4 > bitArray.bitSize || end < start4 || end > bitArray.bitSize) {
+    const msg = `Invalid bit array slice: start = ${start4}, end = ${end}, bit size = ${bitArray.bitSize}`;
+    throw new globalThis.Error(msg);
+  }
 }
 var utf8Encoder;
 function stringBits(string5) {
@@ -9135,7 +9406,10 @@ function parse_team_id(loop$maybe_id, loop$input) {
       loop$maybe_id = new Some(new TeamB());
       loop$input = next_input;
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at team_id: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$maybe_id = maybe_id;
@@ -9173,24 +9447,37 @@ function parse_player_name(loop$maybe_name, loop$input) {
     }
   }
 }
-function skip_tag(loop$input) {
+function skip_tag_inner(loop$input, loop$depth) {
   while (true) {
     let input2 = loop$input;
+    let depth = loop$depth;
     let $ = signal(input2);
     if (!$.isOk()) {
       let e = $[0];
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
       let next_input = $[0][1];
+      echo(["Skipping sub tag: ", tag], "src/parse.gleam", 277);
       loop$input = next_input;
+      loop$depth = depth + 1;
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      return new Ok(next_input);
+      if (depth === 0) {
+        return new Ok(next_input);
+      } else {
+        loop$input = next_input;
+        loop$depth = depth - 1;
+      }
     } else {
       let next_input = $[0][1];
       loop$input = next_input;
+      loop$depth = depth;
     }
   }
+}
+function skip_tag(input2) {
+  return skip_tag_inner(input2, 0);
 }
 function parse_player_inner(loop$parse_state, loop$input) {
   while (true) {
@@ -9231,7 +9518,9 @@ function parse_player_inner(loop$parse_state, loop$input) {
         }
       );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
       let next_input = $[0][1];
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 232);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9243,12 +9532,16 @@ function parse_player_inner(loop$parse_state, loop$input) {
       if (parse_state instanceof ParsePlayerState && parse_state.name instanceof Some) {
         let name = parse_state.name[0];
         let ships = parse_state.ships;
+        echo(["parsed player: ", name], "src/parse.gleam", 239);
         return new Ok([new Player(name, ships), next_input]);
       } else {
         return new Error2("Missing player data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at player: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$parse_state = parse_state;
@@ -9289,7 +9582,10 @@ function parse_players_inner(loop$players, loop$input) {
       let next_input = $[0][1];
       return new Ok([players, next_input]);
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at team_players: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$players = players;
@@ -9308,7 +9604,7 @@ function parse_team_inner(loop$parse_state, loop$input) {
     if (!$.isOk()) {
       let e = $[0];
       return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamId") {
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamID") {
       let next_input = $[0][1];
       return try$(
         parse_team_id(new None(), next_input),
@@ -9341,7 +9637,9 @@ function parse_team_inner(loop$parse_state, loop$input) {
         }
       );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
       let next_input = $[0][1];
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 134);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9355,10 +9653,14 @@ function parse_team_inner(loop$parse_state, loop$input) {
         let players = parse_state.players;
         return new Ok([which_team, new Team(players), next_input]);
       } else {
+        echo(parse_state, "src/parse.gleam", 143);
         return new Error2("Missing team data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at team: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$parse_state = parse_state;
@@ -9379,12 +9681,13 @@ function parse_teams_inner(loop$parse_state, loop$input) {
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamReportOfShipBattleReportCraftBattleReport") {
       let next_input = $[0][1];
+      echo("Parsing team report", "src/parse.gleam", 76);
       return try$(
         parse_team(next_input),
         (_use0) => {
           let which_team = _use0[0];
           let team = _use0[1];
-          let next_input$1 = _use0[2];
+          let next_input_2 = _use0[2];
           let _block;
           if (which_team instanceof TeamA) {
             let _record = parse_state;
@@ -9394,13 +9697,17 @@ function parse_teams_inner(loop$parse_state, loop$input) {
             _block = new ParseTeamsState(_record.maybe_team_a, new Some(team));
           }
           let new_state = _block;
-          return parse_teams_inner(new_state, next_input$1);
+          return parse_teams_inner(new_state, next_input_2);
         }
       );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let next_input = $[0][1];
-      loop$parse_state = parse_state;
-      loop$input = next_input;
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_teams_inner(parse_state, next_input_2);
+        }
+      );
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
       if (parse_state instanceof ParseTeamsState && parse_state.maybe_team_a instanceof Some && parse_state.maybe_team_b instanceof Some) {
@@ -9408,10 +9715,14 @@ function parse_teams_inner(loop$parse_state, loop$input) {
         let team_b = parse_state.maybe_team_b[0];
         return new Ok([team_a, team_b, next_input]);
       } else {
-        return new Error2("Missing team data");
+        echo(parse_state, "src/parse.gleam", 94);
+        return new Error2("Missing teams data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at teams: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$parse_state = parse_state;
@@ -9441,12 +9752,22 @@ function parse_report_element(loop$input) {
         }
       );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
       let next_input = $[0][1];
-      loop$input = next_input;
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 44);
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_report_element(next_input_2);
+        }
+      );
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       return new Error2("Unexpected end of XML");
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at report: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$input = next_input;
@@ -9474,7 +9795,10 @@ function parse_report_xml(loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       return new Error2("Unexpected end of XML");
     } else if ($.isOk() && $[0][0] instanceof Data) {
-      return new Error2("Unexpected data");
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at root: ", data]))
+      );
     } else {
       let next_input = $[0][1];
       loop$input = next_input;
@@ -9486,6 +9810,142 @@ function parse_report(content) {
   let _pipe$1 = from_string(_pipe);
   let _pipe$2 = with_stripping(_pipe$1, true);
   return parse_report_xml(_pipe$2);
+}
+function echo(value, file, line) {
+  const grey = "\x1B[90m";
+  const reset_color = "\x1B[39m";
+  const file_line = `${file}:${line}`;
+  const string_value = echo$inspect(value);
+  if (globalThis.process?.stderr?.write) {
+    const string5 = `${grey}${file_line}${reset_color}
+${string_value}
+`;
+    process.stderr.write(string5);
+  } else if (globalThis.Deno) {
+    const string5 = `${grey}${file_line}${reset_color}
+${string_value}
+`;
+    globalThis.Deno.stderr.writeSync(new TextEncoder().encode(string5));
+  } else {
+    const string5 = `${file_line}
+${string_value}`;
+    globalThis.console.log(string5);
+  }
+  return value;
+}
+function echo$inspectString(str) {
+  let new_str = '"';
+  for (let i = 0; i < str.length; i++) {
+    let char = str[i];
+    if (char == "\n") new_str += "\\n";
+    else if (char == "\r") new_str += "\\r";
+    else if (char == "	") new_str += "\\t";
+    else if (char == "\f") new_str += "\\f";
+    else if (char == "\\") new_str += "\\\\";
+    else if (char == '"') new_str += '\\"';
+    else if (char < " " || char > "~" && char < "\xA0") {
+      new_str += "\\u{" + char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0") + "}";
+    } else {
+      new_str += char;
+    }
+  }
+  new_str += '"';
+  return new_str;
+}
+function echo$inspectDict(map5) {
+  let body = "dict.from_list([";
+  let first = true;
+  let key_value_pairs = [];
+  map5.forEach((value, key) => {
+    key_value_pairs.push([key, value]);
+  });
+  key_value_pairs.sort();
+  key_value_pairs.forEach(([key, value]) => {
+    if (!first) body = body + ", ";
+    body = body + "#(" + echo$inspect(key) + ", " + echo$inspect(value) + ")";
+    first = false;
+  });
+  return body + "])";
+}
+function echo$inspectCustomType(record) {
+  const props = globalThis.Object.keys(record).map((label) => {
+    const value = echo$inspect(record[label]);
+    return isNaN(parseInt(label)) ? `${label}: ${value}` : value;
+  }).join(", ");
+  return props ? `${record.constructor.name}(${props})` : record.constructor.name;
+}
+function echo$inspectObject(v) {
+  const name = Object.getPrototypeOf(v)?.constructor?.name || "Object";
+  const props = [];
+  for (const k of Object.keys(v)) {
+    props.push(`${echo$inspect(k)}: ${echo$inspect(v[k])}`);
+  }
+  const body = props.length ? " " + props.join(", ") + " " : "";
+  const head = name === "Object" ? "" : name + " ";
+  return `//js(${head}{${body}})`;
+}
+function echo$inspect(v) {
+  const t = typeof v;
+  if (v === true) return "True";
+  if (v === false) return "False";
+  if (v === null) return "//js(null)";
+  if (v === void 0) return "Nil";
+  if (t === "string") return echo$inspectString(v);
+  if (t === "bigint" || t === "number") return v.toString();
+  if (globalThis.Array.isArray(v))
+    return `#(${v.map(echo$inspect).join(", ")})`;
+  if (v instanceof List)
+    return `[${v.toArray().map(echo$inspect).join(", ")}]`;
+  if (v instanceof UtfCodepoint)
+    return `//utfcodepoint(${String.fromCodePoint(v.value)})`;
+  if (v instanceof BitArray) return echo$inspectBitArray(v);
+  if (v instanceof CustomType) return echo$inspectCustomType(v);
+  if (echo$isDict(v)) return echo$inspectDict(v);
+  if (v instanceof Set)
+    return `//js(Set(${[...v].map(echo$inspect).join(", ")}))`;
+  if (v instanceof RegExp) return `//js(${v})`;
+  if (v instanceof Date) return `//js(Date("${v.toISOString()}"))`;
+  if (v instanceof Function) {
+    const args = [];
+    for (const i of Array(v.length).keys())
+      args.push(String.fromCharCode(i + 97));
+    return `//fn(${args.join(", ")}) { ... }`;
+  }
+  return echo$inspectObject(v);
+}
+function echo$inspectBitArray(bitArray) {
+  let endOfAlignedBytes = bitArray.bitOffset + 8 * Math.trunc(bitArray.bitSize / 8);
+  let alignedBytes = bitArraySlice(
+    bitArray,
+    bitArray.bitOffset,
+    endOfAlignedBytes
+  );
+  let remainingUnalignedBits = bitArray.bitSize % 8;
+  if (remainingUnalignedBits > 0) {
+    let remainingBits = bitArraySliceToInt(
+      bitArray,
+      endOfAlignedBytes,
+      bitArray.bitSize,
+      false,
+      false
+    );
+    let alignedBytesArray = Array.from(alignedBytes.rawBuffer);
+    let suffix = `${remainingBits}:size(${remainingUnalignedBits})`;
+    if (alignedBytesArray.length === 0) {
+      return `<<${suffix}>>`;
+    } else {
+      return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}, ${suffix}>>`;
+    }
+  } else {
+    return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}>>`;
+  }
+}
+function echo$isDict(value) {
+  try {
+    return value instanceof Dict;
+  } catch {
+    return false;
+  }
 }
 
 // build/dev/javascript/neb_stats/read_report_ffi.mjs
@@ -9633,7 +10093,7 @@ function main() {
     throw makeError(
       "let_assert",
       "neb_stats",
-      25,
+      24,
       "main",
       "Pattern match failed, no pattern matched the value.",
       { value: $ }

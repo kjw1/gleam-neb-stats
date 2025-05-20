@@ -17,13 +17,3 @@ export function readUploadedFile(inputId) {
         reader.readAsText(file);
     })
 }
-
-/**
- * Synchronously (using async/await) reads the uploaded file from a file input element by id.
- * Must be called from an async function.
- * @param {string} inputId - The id of the file input element.
- * @returns {Promise<string>} - Promise resolving to the file contents.
- */
-export async function readUploadedFileSync(inputId) {
-    return await readUploadedFile(inputId);
-};

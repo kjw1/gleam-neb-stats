@@ -1,4 +1,3 @@
-import data/report.{dummy_report}
 import gleam/javascript/promise
 import gleam/option.{type Option, None, Some}
 import gleam/string
