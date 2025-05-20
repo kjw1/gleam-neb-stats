@@ -4980,6 +4980,13 @@ function on_change(msg) {
 }
 
 // build/dev/javascript/neb_stats/data/report.mjs
+var Ship = class extends CustomType {
+  constructor(name, class$2) {
+    super();
+    this.name = name;
+    this.class = class$2;
+  }
+};
 var Player = class extends CustomType {
   constructor(name, ships) {
     super();
@@ -9379,6 +9386,13 @@ var ParsePlayerState = class extends CustomType {
     this.ships = ships;
   }
 };
+var ParseShipState = class extends CustomType {
+  constructor(name, class$2) {
+    super();
+    this.name = name;
+    this.class = class$2;
+  }
+};
 function parse_team_id(loop$maybe_id, loop$input) {
   while (true) {
     let maybe_id = loop$maybe_id;
@@ -9417,7 +9431,7 @@ function parse_team_id(loop$maybe_id, loop$input) {
     }
   }
 }
-function parse_player_name(loop$maybe_name, loop$input) {
+function parse_string_element(loop$maybe_name, loop$input) {
   while (true) {
     let maybe_name = loop$maybe_name;
     let input2 = loop$input;
@@ -9426,7 +9440,7 @@ function parse_player_name(loop$maybe_name, loop$input) {
       let e = $[0];
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      return new Error2("unexpected nested element for player name");
+      return new Error2("unexpected nested element for string element");
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
       if (maybe_name instanceof Some) {
@@ -9458,7 +9472,7 @@ function skip_tag_inner(loop$input, loop$depth) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping sub tag: ", tag], "src/parse.gleam", 277);
+      echo(["Skipping sub tag: ", tag], "src/parse.gleam", 350);
       loop$input = next_input;
       loop$depth = depth + 1;
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
@@ -9479,6 +9493,125 @@ function skip_tag_inner(loop$input, loop$depth) {
 function skip_tag(input2) {
   return skip_tag_inner(input2, 0);
 }
+function parse_ship_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShipName") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_ship_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseShipState(new Some(name), _record.class);
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "HullKey") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let class$2 = _use0[0];
+          let next_input$1 = _use0[1];
+          return parse_ship_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseShipState(_record.name, new Some(class$2));
+            })(),
+            next_input$1
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
+      let next_input = $[0][1];
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 323);
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_ship_inner(parse_state, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseShipState && parse_state.name instanceof Some && parse_state.class instanceof Some) {
+        let name = parse_state.name[0];
+        let class$2 = parse_state.class[0];
+        echo(["parsed ship: ", name], "src/parse.gleam", 330);
+        return new Ok([new Ship(name, class$2), next_input]);
+      } else {
+        return new Error2("Missing ship data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at ships: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_ship(input2) {
+  return parse_ship_inner(new ParseShipState(new None(), new None()), input2);
+}
+function parse_ships_inner(loop$ships, loop$input) {
+  while (true) {
+    let ships = loop$ships;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShipBattleReport") {
+      let next_input = $[0][1];
+      return try$(
+        parse_ship(next_input),
+        (_use0) => {
+          let ship = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_ships_inner(prepend(ship, ships), next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_ships_inner(ships, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([ships, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at ships: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$ships = ships;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_ships(input2) {
+  return parse_ships_inner(toList([]), input2);
+}
 function parse_player_inner(loop$parse_state, loop$input) {
   while (true) {
     let parse_state = loop$parse_state;
@@ -9490,7 +9623,7 @@ function parse_player_inner(loop$parse_state, loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "PlayerName") {
       let next_input = $[0][1];
       return try$(
-        parse_player_name(new None(), next_input),
+        parse_string_element(new None(), next_input),
         (_use0) => {
           let name = _use0[0];
           let next_input_2 = _use0[1];
@@ -9506,12 +9639,14 @@ function parse_player_inner(loop$parse_state, loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Ships") {
       let next_input = $[0][1];
       return try$(
-        skip_tag(next_input),
-        (next_input_2) => {
+        parse_ships(next_input),
+        (_use0) => {
+          let ships = _use0[0];
+          let next_input_2 = _use0[1];
           return parse_player_inner(
             (() => {
               let _record = parse_state;
-              return new ParsePlayerState(_record.name, toList([]));
+              return new ParsePlayerState(_record.name, ships);
             })(),
             next_input_2
           );
@@ -9520,7 +9655,7 @@ function parse_player_inner(loop$parse_state, loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 232);
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 234);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9532,7 +9667,7 @@ function parse_player_inner(loop$parse_state, loop$input) {
       if (parse_state instanceof ParsePlayerState && parse_state.name instanceof Some) {
         let name = parse_state.name[0];
         let ships = parse_state.ships;
-        echo(["parsed player: ", name], "src/parse.gleam", 239);
+        echo(["parsed player: ", name], "src/parse.gleam", 241);
         return new Ok([new Player(name, ships), next_input]);
       } else {
         return new Error2("Missing player data");
@@ -9639,7 +9774,7 @@ function parse_team_inner(loop$parse_state, loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 134);
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 136);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9653,7 +9788,7 @@ function parse_team_inner(loop$parse_state, loop$input) {
         let players = parse_state.players;
         return new Ok([which_team, new Team(players), next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 143);
+        echo(parse_state, "src/parse.gleam", 145);
         return new Error2("Missing team data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -9681,7 +9816,7 @@ function parse_teams_inner(loop$parse_state, loop$input) {
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamReportOfShipBattleReportCraftBattleReport") {
       let next_input = $[0][1];
-      echo("Parsing team report", "src/parse.gleam", 76);
+      echo("Parsing team report", "src/parse.gleam", 78);
       return try$(
         parse_team(next_input),
         (_use0) => {
@@ -9715,7 +9850,7 @@ function parse_teams_inner(loop$parse_state, loop$input) {
         let team_b = parse_state.maybe_team_b[0];
         return new Ok([team_a, team_b, next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 94);
+        echo(parse_state, "src/parse.gleam", 96);
         return new Error2("Missing teams data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -9754,7 +9889,7 @@ function parse_report_element(loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 44);
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 46);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {

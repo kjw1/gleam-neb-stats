@@ -1,4 +1,6 @@
-import data/report.{type Player, type Ship, type Team, Player, Report, Team}
+import data/report.{
+  type Player, type Ship, type Team, Player, Report, Ship, Team,
+}
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import gleam/string
@@ -215,16 +217,16 @@ fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(Name("", "PlayerName"), _)), next_input)) -> {
-      use #(name, next_input_2) <- try(parse_player_name(None, next_input))
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
       parse_player_inner(
         ParsePlayerState(..parse_state, name: Some(name)),
         next_input_2,
       )
     }
     Ok(#(ElementStart(Tag(Name("", "Ships"), _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
+      use #(ships, next_input_2) <- try(parse_ships(next_input))
       parse_player_inner(
-        ParsePlayerState(..parse_state, ships: []),
+        ParsePlayerState(..parse_state, ships: ships),
         next_input_2,
       )
     }
@@ -249,11 +251,11 @@ fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
   }
 }
 
-fn parse_player_name(maybe_name, input) -> Result(#(String, Input), String) {
+fn parse_string_element(maybe_name, input) -> Result(#(String, Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(_, _)), _)) ->
-      Error("unexpected nested element for player name")
+      Error("unexpected nested element for string element")
     Ok(#(xmlm.ElementEnd, next_input)) -> {
       case maybe_name {
         Some(name) -> Ok(#(name, next_input))
@@ -261,8 +263,79 @@ fn parse_player_name(maybe_name, input) -> Result(#(String, Input), String) {
       }
     }
     Ok(#(xmlm.Data(name), next_input)) ->
-      parse_player_name(Some(name), next_input)
-    Ok(#(xmlm.Dtd(_), next_input)) -> parse_player_name(maybe_name, next_input)
+      parse_string_element(Some(name), next_input)
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_string_element(maybe_name, next_input)
+  }
+}
+
+fn parse_ships(input) {
+  parse_ships_inner([], input)
+}
+
+fn parse_ships_inner(
+  ships: List(Ship),
+  input: Input,
+) -> Result(#(List(Ship), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "ShipBattleReport"), _)), next_input)) -> {
+      use #(ship, next_input_2) <- try(parse_ship(next_input))
+      parse_ships_inner([ship, ..ships], next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_ships_inner(ships, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(ships, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at ships: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_ships_inner(ships, next_input)
+  }
+}
+
+type ParseShipState {
+  ParseShipState(name: Option(String), class: Option(String))
+}
+
+fn parse_ship(input) {
+  parse_ship_inner(ParseShipState(name: None, class: None), input)
+}
+
+fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "ShipName"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_ship_inner(
+        ParseShipState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "HullKey"), _)), next_input)) -> {
+      use #(class, next_input) <- try(parse_string_element(None, next_input))
+      parse_ship_inner(
+        ParseShipState(..parse_state, class: Some(class)),
+        next_input,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+      echo #("Skipping tag: ", tag)
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_ship_inner(parse_state, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseShipState(name: Some(name), class: Some(class)) -> {
+          echo #("parsed ship: ", name)
+          Ok(#(Ship(name: name, class: class), next_input))
+        }
+        _ -> Error("Missing ship data")
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at ships: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_ship_inner(parse_state, next_input)
   }
 }
 
