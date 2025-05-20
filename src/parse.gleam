@@ -1,6 +1,9 @@
 import data/report.{
-  type Player, type Ship, type Team, Player, Report, Ship, Team,
+  type AntiShipWeapon, type Player, type Ship, type Team, AntiShipWeapon, Player,
+  Report, Ship, Team,
 }
+import gleam/float
+import gleam/int
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import gleam/string
@@ -43,7 +46,6 @@ fn parse_report_element(input) {
       #(Report(team_a: team_a, team_b: team_b), next_input)
     }
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
-      echo #("Skipping tag: ", tag)
       use next_input_2 <- try(skip_tag(next_input))
       parse_report_element(next_input_2)
     }
@@ -133,7 +135,6 @@ fn parse_team_inner(
       )
     }
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
-      echo #("Skipping tag: ", tag)
       use next_input_2 <- try(skip_tag(next_input))
       parse_team_inner(parse_state, next_input_2)
     }
@@ -231,7 +232,6 @@ fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
       )
     }
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
-      echo #("Skipping tag: ", tag)
       use next_input_2 <- try(skip_tag(next_input))
       parse_player_inner(parse_state, next_input_2)
     }
@@ -295,11 +295,24 @@ fn parse_ships_inner(
 }
 
 type ParseShipState {
-  ParseShipState(name: Option(String), class: Option(String))
+  ParseShipState(
+    name: Option(String),
+    class: Option(String),
+    damage_taken: Option(Int),
+    anti_ship_weapons: List(AntiShipWeapon),
+  )
 }
 
 fn parse_ship(input) {
-  parse_ship_inner(ParseShipState(name: None, class: None), input)
+  parse_ship_inner(
+    ParseShipState(
+      name: None,
+      class: None,
+      damage_taken: None,
+      anti_ship_weapons: [],
+    ),
+    input,
+  )
 }
 
 fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
@@ -319,23 +332,191 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
         next_input,
       )
     }
+    Ok(#(ElementStart(Tag(Name("", "AntiShip"), _)), next_input)) -> {
+      echo "Parsing anti ship"
+
+      use #(weapons, next_input) <- try(parse_anti_ship(next_input))
+      parse_ship_inner(
+        ParseShipState(..parse_state, anti_ship_weapons: weapons),
+        next_input,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalDamageReceived"), _)), next_input)) -> {
+      use #(string_damage, next_input_2) <- try(parse_string_element(
+        None,
+        next_input,
+      ))
+      use damage <- try(result.replace_error(
+        int.parse(string_damage),
+        "Failed to parse damage",
+      ))
+      parse_ship_inner(
+        ParseShipState(..parse_state, damage_taken: Some(damage)),
+        next_input_2,
+      )
+    }
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
-      echo #("Skipping tag: ", tag)
       use next_input_2 <- try(skip_tag(next_input))
       parse_ship_inner(parse_state, next_input_2)
     }
     Ok(#(xmlm.ElementEnd, next_input)) -> {
       case parse_state {
-        ParseShipState(name: Some(name), class: Some(class)) -> {
-          echo #("parsed ship: ", name)
-          Ok(#(Ship(name: name, class: class), next_input))
+        ParseShipState(
+          name: Some(name),
+          class: Some(class),
+          damage_taken: Some(damage),
+          anti_ship_weapons: anti_ship_weapons,
+        ) -> {
+          echo #("parsed ship: ", parse_state)
+          Ok(#(
+            Ship(
+              name: name,
+              class: class,
+              damage_taken: damage,
+              anti_ship_weapons: anti_ship_weapons,
+            ),
+            next_input,
+          ))
         }
-        _ -> Error("Missing ship data")
+        _ -> {
+          echo #("parse state: ", parse_state)
+          Error("Missing ship data")
+        }
       }
     }
     Ok(#(xmlm.Data(data), _)) ->
       Error(string.concat(["Unexpected data at ships: ", data]))
     Ok(#(xmlm.Dtd(_), next_input)) -> parse_ship_inner(parse_state, next_input)
+  }
+}
+
+fn parse_anti_ship(input) {
+  parse_anti_ship_inner([], input)
+}
+
+fn parse_anti_ship_inner(
+  anti_ship: List(AntiShipWeapon),
+  input: Input,
+) -> Result(#(List(AntiShipWeapon), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "Weapons"), _)), next_input)) -> {
+      echo "parsing weapons"
+      use #(weapons, next_input_2) <- try(parse_anti_ship_weapons(next_input))
+      parse_anti_ship_inner(weapons, next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_anti_ship_inner(anti_ship, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(anti_ship, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at anti ship: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_anti_ship_inner(anti_ship, next_input)
+  }
+}
+
+fn parse_anti_ship_weapons(input) {
+  parse_anti_ship_weapons_inner([], input)
+}
+
+fn parse_anti_ship_weapons_inner(
+  anti_ship_weapons: List(AntiShipWeapon),
+  input: Input,
+) -> Result(#(List(AntiShipWeapon), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(
+      ElementStart(Tag(
+        Name("", "WeaponReport"),
+        [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "DiscreteWeaponReport",
+          ),
+        ],
+      )),
+      next_input,
+    )) -> {
+      echo "parsing weapon report"
+      use #(weapon, next_input_2) <- try(parse_anti_ship_weapon(next_input))
+      parse_anti_ship_weapons_inner([weapon, ..anti_ship_weapons], next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+      echo #("Skipping tag: ", tag)
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_anti_ship_weapons_inner(anti_ship_weapons, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(anti_ship_weapons, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at anti ship weapons: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_anti_ship_weapons_inner(anti_ship_weapons, next_input)
+  }
+}
+
+type ParseAntiShipWeaponState {
+  ParseAntiShipWeaponState(name: Option(String), damage_dealt: Option(Float))
+}
+
+fn parse_anti_ship_weapon(input) {
+  parse_anti_ship_weapon_inner(
+    ParseAntiShipWeaponState(name: None, damage_dealt: None),
+    input,
+  )
+}
+
+fn parse_anti_ship_weapon_inner(
+  parse_state,
+  input,
+) -> Result(#(AntiShipWeapon, Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "Name"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_anti_ship_weapon_inner(
+        ParseAntiShipWeaponState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
+      use #(string_damage, next_input_2) <- try(parse_string_element(
+        None,
+        next_input,
+      ))
+      use damage <- try(result.replace_error(
+        result.or(
+          float.parse(string_damage),
+          result.then(int.parse(string_damage), fn(int_damage) {
+            Ok(int.to_float(int_damage))
+          }),
+        ),
+        "Failed to parse damage: " <> string_damage,
+      ))
+      parse_anti_ship_weapon_inner(
+        ParseAntiShipWeaponState(..parse_state, damage_dealt: Some(damage)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_anti_ship_weapon_inner(parse_state, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseAntiShipWeaponState(name: Some(name), damage_dealt: Some(damage)) ->
+          Ok(#(AntiShipWeapon(name: name, damage_dealt: damage), next_input))
+        _ -> Error("Missing anti ship weapon data")
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at anti ship weapon: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_anti_ship_weapon_inner(parse_state, next_input)
   }
 }
 
@@ -347,7 +528,7 @@ fn skip_tag_inner(input, depth) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
-      echo #("Skipping sub tag: ", tag)
+      //echo #("Skipping sub tag: ", tag)
       skip_tag_inner(next_input, depth + 1)
     }
     Ok(#(xmlm.ElementEnd, next_input)) ->

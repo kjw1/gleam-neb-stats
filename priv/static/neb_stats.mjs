@@ -1879,6 +1879,15 @@ function sort(list4, compare4) {
     return merge_all(sequences$1, new Ascending(), compare4);
   }
 }
+function reduce(list4, fun) {
+  if (list4.hasLength(0)) {
+    return new Error2(void 0);
+  } else {
+    let first$1 = list4.head;
+    let rest$1 = list4.tail;
+    return new Ok(fold(rest$1, first$1, fun));
+  }
+}
 
 // build/dev/javascript/gleam_stdlib/gleam/string.mjs
 function is_empty(str) {
@@ -2117,6 +2126,20 @@ var Nil = void 0;
 var NOT_FOUND = {};
 function identity(x) {
   return x;
+}
+function parse_int(value) {
+  if (/^[-+]?(\d+)$/.test(value)) {
+    return new Ok(parseInt(value));
+  } else {
+    return new Error2(Nil);
+  }
+}
+function parse_float(value) {
+  if (/^[-+]?(\d+)\.(\d+)([eE][-+]?\d+)?$/.test(value)) {
+    return new Ok(parseFloat(value));
+  } else {
+    return new Error2(Nil);
+  }
 }
 function to_string(term) {
   return term.toString();
@@ -2456,6 +2479,32 @@ function try$(result, fun) {
   } else {
     let e = result[0];
     return new Error2(e);
+  }
+}
+function then$(result, fun) {
+  return try$(result, fun);
+}
+function unwrap(result, default$) {
+  if (result.isOk()) {
+    let v = result[0];
+    return v;
+  } else {
+    return default$;
+  }
+}
+function or(first, second) {
+  if (first.isOk()) {
+    return first;
+  } else {
+    return second;
+  }
+}
+function replace_error(result, error2) {
+  if (result.isOk()) {
+    let x = result[0];
+    return new Ok(x);
+  } else {
+    return new Error2(error2);
   }
 }
 
@@ -4810,6 +4859,9 @@ function div(attrs, children) {
 function p(attrs, children) {
   return element2("p", attrs, children);
 }
+function br(attrs) {
+  return element2("br", attrs, empty_list);
+}
 function form(attrs, children) {
   return element2("form", attrs, children);
 }
@@ -4980,11 +5032,20 @@ function on_change(msg) {
 }
 
 // build/dev/javascript/neb_stats/data/report.mjs
+var AntiShipWeapon = class extends CustomType {
+  constructor(name, damage_dealt) {
+    super();
+    this.name = name;
+    this.damage_dealt = damage_dealt;
+  }
+};
 var Ship = class extends CustomType {
-  constructor(name, class$2) {
+  constructor(name, class$2, damage_taken, anti_ship_weapons) {
     super();
     this.name = name;
     this.class = class$2;
+    this.damage_taken = damage_taken;
+    this.anti_ship_weapons = anti_ship_weapons;
   }
 };
 var Player = class extends CustomType {
@@ -5018,7 +5079,32 @@ var PageState = class extends CustomType {
 function init(report) {
   return new PageState(report);
 }
+function weapon_card(weapon) {
+  return div(
+    toList([class$("box")]),
+    toList([
+      p(toList([class$("title is-5")]), toList([text3(weapon.name)])),
+      p(
+        toList([]),
+        toList([text3("Damage Dealt: " + float_to_string(weapon.damage_dealt))])
+      )
+    ])
+  );
+}
+function ship_damage_dealt(ship) {
+  let _pipe = ship.anti_ship_weapons;
+  let _pipe$1 = map(_pipe, (w) => {
+    return w.damage_dealt;
+  });
+  return reduce(_pipe$1, (a, b) => {
+    return a + b;
+  });
+}
 function ship_card(ship) {
+  let _block;
+  let _pipe = ship_damage_dealt(ship);
+  _block = unwrap(_pipe, 0);
+  let total_damage = _block;
   return div(
     toList([class$("card")]),
     toList([
@@ -5030,22 +5116,71 @@ function ship_card(ship) {
       ),
       div(
         toList([class$("card-content")]),
-        toList([div(toList([class$("content")]), toList([text3(ship.class)]))])
+        toList([
+          div(
+            toList([class$("content")]),
+            toList([
+              text3(ship.class),
+              br(toList([])),
+              text3("Damage Taken: " + to_string(ship.damage_taken)),
+              br(toList([])),
+              text3("Damage Dealt: " + float_to_string(total_damage))
+            ])
+          ),
+          div(
+            toList([class$("box")]),
+            (() => {
+              let _pipe$1 = ship.anti_ship_weapons;
+              return map(_pipe$1, weapon_card);
+            })()
+          )
+        ])
       )
     ])
   );
 }
+function total_damage_dealt(ships) {
+  let _pipe = ships;
+  let _pipe$1 = map(
+    _pipe,
+    (ship) => {
+      let $ = ship_damage_dealt(ship);
+      if ($.isOk()) {
+        let damage_dealt = $[0];
+        return damage_dealt;
+      } else {
+        return 0;
+      }
+    }
+  );
+  return reduce(_pipe$1, (a, b) => {
+    return a + b;
+  });
+}
 function player_box(player) {
+  let _block;
+  let _pipe = total_damage_dealt(player.ships);
+  _block = unwrap(_pipe, 0);
+  let total_damage = _block;
   return div(
     toList([class$("box")]),
     toList([
       div(
-        toList([class$("content")]),
+        toList([]),
         prepend(
-          text3(player.name),
+          p(
+            toList([class$("title is-4")]),
+            toList([
+              text3(
+                player.name + " (Total Damage: " + float_to_string(
+                  total_damage
+                ) + ")"
+              )
+            ])
+          ),
           (() => {
-            let _pipe = player.ships;
-            return map(_pipe, ship_card);
+            let _pipe$1 = player.ships;
+            return map(_pipe$1, ship_card);
           })()
         )
       )
@@ -5057,9 +5192,9 @@ function team_box(team, team_name) {
     toList([class$("box")]),
     toList([
       div(
-        toList([class$("content")]),
+        toList([]),
         prepend(
-          text3(team_name),
+          p(toList([class$("title")]), toList([text3(team_name)])),
           (() => {
             let _pipe = team.players;
             return map(_pipe, player_box);
@@ -9387,10 +9522,19 @@ var ParsePlayerState = class extends CustomType {
   }
 };
 var ParseShipState = class extends CustomType {
-  constructor(name, class$2) {
+  constructor(name, class$2, damage_taken, anti_ship_weapons) {
     super();
     this.name = name;
     this.class = class$2;
+    this.damage_taken = damage_taken;
+    this.anti_ship_weapons = anti_ship_weapons;
+  }
+};
+var ParseAntiShipWeaponState = class extends CustomType {
+  constructor(name, damage_dealt) {
+    super();
+    this.name = name;
+    this.damage_dealt = damage_dealt;
   }
 };
 function parse_team_id(loop$maybe_id, loop$input) {
@@ -9472,7 +9616,6 @@ function skip_tag_inner(loop$input, loop$depth) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping sub tag: ", tag], "src/parse.gleam", 350);
       loop$input = next_input;
       loop$depth = depth + 1;
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
@@ -9493,6 +9636,199 @@ function skip_tag_inner(loop$input, loop$depth) {
 function skip_tag(input2) {
   return skip_tag_inner(input2, 0);
 }
+function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Name") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipWeaponState(
+                new Some(name),
+                _record.damage_dealt
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalDamageDone") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let string_damage = _use0[0];
+          let next_input_2 = _use0[1];
+          return try$(
+            replace_error(
+              or(
+                parse_float(string_damage),
+                then$(
+                  parse_int(string_damage),
+                  (int_damage) => {
+                    return new Ok(identity(int_damage));
+                  }
+                )
+              ),
+              "Failed to parse damage: " + string_damage
+            ),
+            (damage) => {
+              return parse_anti_ship_weapon_inner(
+                (() => {
+                  let _record = parse_state;
+                  return new ParseAntiShipWeaponState(
+                    _record.name,
+                    new Some(damage)
+                  );
+                })(),
+                next_input_2
+              );
+            }
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_anti_ship_weapon_inner(parse_state, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseAntiShipWeaponState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some) {
+        let name = parse_state.name[0];
+        let damage = parse_state.damage_dealt[0];
+        return new Ok([new AntiShipWeapon(name, damage), next_input]);
+      } else {
+        return new Error2("Missing anti ship weapon data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at anti ship weapon: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_anti_ship_weapon(input2) {
+  return parse_anti_ship_weapon_inner(
+    new ParseAntiShipWeaponState(new None(), new None()),
+    input2
+  );
+}
+function parse_anti_ship_weapons_inner(loop$anti_ship_weapons, loop$input) {
+  while (true) {
+    let anti_ship_weapons = loop$anti_ship_weapons;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "DiscreteWeaponReport") {
+      let next_input = $[0][1];
+      echo("parsing weapon report", "src/parse.gleam", 445);
+      return try$(
+        parse_anti_ship_weapon(next_input),
+        (_use0) => {
+          let weapon = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_weapons_inner(
+            prepend(weapon, anti_ship_weapons),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
+      let next_input = $[0][1];
+      echo(["Skipping tag: ", tag], "src/parse.gleam", 450);
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_anti_ship_weapons_inner(anti_ship_weapons, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([anti_ship_weapons, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at anti ship weapons: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$anti_ship_weapons = anti_ship_weapons;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_anti_ship_weapons(input2) {
+  return parse_anti_ship_weapons_inner(toList([]), input2);
+}
+function parse_anti_ship_inner(loop$anti_ship, loop$input) {
+  while (true) {
+    let anti_ship = loop$anti_ship;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Weapons") {
+      let next_input = $[0][1];
+      echo("parsing weapons", "src/parse.gleam", 404);
+      return try$(
+        parse_anti_ship_weapons(next_input),
+        (_use0) => {
+          let weapons = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_inner(weapons, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_anti_ship_inner(anti_ship, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([anti_ship, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at anti ship: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$anti_ship = anti_ship;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_anti_ship(input2) {
+  return parse_anti_ship_inner(toList([]), input2);
+}
 function parse_ship_inner(loop$parse_state, loop$input) {
   while (true) {
     let parse_state = loop$parse_state;
@@ -9511,7 +9847,12 @@ function parse_ship_inner(loop$parse_state, loop$input) {
           return parse_ship_inner(
             (() => {
               let _record = parse_state;
-              return new ParseShipState(new Some(name), _record.class);
+              return new ParseShipState(
+                new Some(name),
+                _record.class,
+                _record.damage_taken,
+                _record.anti_ship_weapons
+              );
             })(),
             next_input_2
           );
@@ -9527,16 +9868,71 @@ function parse_ship_inner(loop$parse_state, loop$input) {
           return parse_ship_inner(
             (() => {
               let _record = parse_state;
-              return new ParseShipState(_record.name, new Some(class$2));
+              return new ParseShipState(
+                _record.name,
+                new Some(class$2),
+                _record.damage_taken,
+                _record.anti_ship_weapons
+              );
             })(),
             next_input$1
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "AntiShip") {
+      let next_input = $[0][1];
+      echo("Parsing anti ship", "src/parse.gleam", 336);
+      return try$(
+        parse_anti_ship(next_input),
+        (_use0) => {
+          let weapons = _use0[0];
+          let next_input$1 = _use0[1];
+          return parse_ship_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseShipState(
+                _record.name,
+                _record.class,
+                _record.damage_taken,
+                weapons
+              );
+            })(),
+            next_input$1
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalDamageReceived") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let string_damage = _use0[0];
+          let next_input_2 = _use0[1];
+          return try$(
+            replace_error(
+              parse_int(string_damage),
+              "Failed to parse damage"
+            ),
+            (damage) => {
+              return parse_ship_inner(
+                (() => {
+                  let _record = parse_state;
+                  return new ParseShipState(
+                    _record.name,
+                    _record.class,
+                    new Some(damage),
+                    _record.anti_ship_weapons
+                  );
+                })(),
+                next_input_2
+              );
+            }
           );
         }
       );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 323);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9545,12 +9941,17 @@ function parse_ship_inner(loop$parse_state, loop$input) {
       );
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      if (parse_state instanceof ParseShipState && parse_state.name instanceof Some && parse_state.class instanceof Some) {
+      if (parse_state instanceof ParseShipState && parse_state.name instanceof Some && parse_state.class instanceof Some && parse_state.damage_taken instanceof Some) {
         let name = parse_state.name[0];
         let class$2 = parse_state.class[0];
-        echo(["parsed ship: ", name], "src/parse.gleam", 330);
-        return new Ok([new Ship(name, class$2), next_input]);
+        let damage = parse_state.damage_taken[0];
+        let anti_ship_weapons = parse_state.anti_ship_weapons;
+        echo(["parsed ship: ", parse_state], "src/parse.gleam", 370);
+        return new Ok(
+          [new Ship(name, class$2, damage, anti_ship_weapons), next_input]
+        );
       } else {
+        echo(["parse state: ", parse_state], "src/parse.gleam", 382);
         return new Error2("Missing ship data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -9566,7 +9967,10 @@ function parse_ship_inner(loop$parse_state, loop$input) {
   }
 }
 function parse_ship(input2) {
-  return parse_ship_inner(new ParseShipState(new None(), new None()), input2);
+  return parse_ship_inner(
+    new ParseShipState(new None(), new None(), new None(), toList([])),
+    input2
+  );
 }
 function parse_ships_inner(loop$ships, loop$input) {
   while (true) {
@@ -9655,7 +10059,6 @@ function parse_player_inner(loop$parse_state, loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 234);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9774,7 +10177,6 @@ function parse_team_inner(loop$parse_state, loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 136);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -9788,7 +10190,7 @@ function parse_team_inner(loop$parse_state, loop$input) {
         let players = parse_state.players;
         return new Ok([which_team, new Team(players), next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 145);
+        echo(parse_state, "src/parse.gleam", 146);
         return new Error2("Missing team data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -9816,7 +10218,7 @@ function parse_teams_inner(loop$parse_state, loop$input) {
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamReportOfShipBattleReportCraftBattleReport") {
       let next_input = $[0][1];
-      echo("Parsing team report", "src/parse.gleam", 78);
+      echo("Parsing team report", "src/parse.gleam", 80);
       return try$(
         parse_team(next_input),
         (_use0) => {
@@ -9850,7 +10252,7 @@ function parse_teams_inner(loop$parse_state, loop$input) {
         let team_b = parse_state.maybe_team_b[0];
         return new Ok([team_a, team_b, next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 96);
+        echo(parse_state, "src/parse.gleam", 98);
         return new Error2("Missing teams data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -9889,7 +10291,6 @@ function parse_report_element(loop$input) {
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
       let tag = $[0][0][0];
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 46);
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
