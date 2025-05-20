@@ -36,12 +36,12 @@ var List = class {
   // @internal
   countLength() {
     let current = this;
-    let length2 = 0;
+    let length3 = 0;
     while (current) {
       current = current.tail;
-      length2++;
+      length3++;
     }
-    return length2 - 1;
+    return length3 - 1;
   }
 };
 function prepend(element3, tail) {
@@ -156,11 +156,11 @@ var BitArray = class {
    * @param {number} index
    * @returns {number | undefined}
    */
-  byteAt(index4) {
-    if (index4 < 0 || index4 >= this.byteSize) {
+  byteAt(index5) {
+    if (index5 < 0 || index5 >= this.byteSize) {
       return void 0;
     }
-    return bitArrayByteAt(this.rawBuffer, this.bitOffset, index4);
+    return bitArrayByteAt(this.rawBuffer, this.bitOffset, index5);
   }
   /** @internal */
   equals(other) {
@@ -248,15 +248,20 @@ var BitArray = class {
     return this.rawBuffer.length;
   }
 };
-function bitArrayByteAt(buffer, bitOffset, index4) {
+function bitArrayByteAt(buffer, bitOffset, index5) {
   if (bitOffset === 0) {
-    return buffer[index4] ?? 0;
+    return buffer[index5] ?? 0;
   } else {
-    const a = buffer[index4] << bitOffset & 255;
-    const b = buffer[index4 + 1] >> 8 - bitOffset;
+    const a = buffer[index5] << bitOffset & 255;
+    const b = buffer[index5 + 1] >> 8 - bitOffset;
     return a | b;
   }
 }
+var UtfCodepoint = class {
+  constructor(value) {
+    this.value = value;
+  }
+};
 var isBitArrayDeprecationMessagePrinted = {};
 function bitArrayPrintDeprecationWarning(name, message) {
   if (isBitArrayDeprecationMessagePrinted[name]) {
@@ -266,6 +271,113 @@ function bitArrayPrintDeprecationWarning(name, message) {
     `Deprecated BitArray.${name} property used in JavaScript FFI code. ${message}.`
   );
   isBitArrayDeprecationMessagePrinted[name] = true;
+}
+function toBitArray(segments) {
+  if (segments.length === 0) {
+    return new BitArray(new Uint8Array());
+  }
+  if (segments.length === 1) {
+    const segment = segments[0];
+    if (segment instanceof BitArray) {
+      return segment;
+    }
+    if (segment instanceof Uint8Array) {
+      return new BitArray(segment);
+    }
+    return new BitArray(new Uint8Array(
+      /** @type {number[]} */
+      segments
+    ));
+  }
+  let bitSize = 0;
+  let areAllSegmentsNumbers = true;
+  for (const segment of segments) {
+    if (segment instanceof BitArray) {
+      bitSize += segment.bitSize;
+      areAllSegmentsNumbers = false;
+    } else if (segment instanceof Uint8Array) {
+      bitSize += segment.byteLength * 8;
+      areAllSegmentsNumbers = false;
+    } else {
+      bitSize += 8;
+    }
+  }
+  if (areAllSegmentsNumbers) {
+    return new BitArray(new Uint8Array(
+      /** @type {number[]} */
+      segments
+    ));
+  }
+  const buffer = new Uint8Array(Math.trunc((bitSize + 7) / 8));
+  let cursor = 0;
+  for (let segment of segments) {
+    const isCursorByteAligned = cursor % 8 === 0;
+    if (segment instanceof BitArray) {
+      if (isCursorByteAligned && segment.bitOffset === 0) {
+        buffer.set(segment.rawBuffer, cursor / 8);
+        cursor += segment.bitSize;
+        const trailingBitsCount = segment.bitSize % 8;
+        if (trailingBitsCount !== 0) {
+          const lastByteIndex = Math.trunc(cursor / 8);
+          buffer[lastByteIndex] >>= 8 - trailingBitsCount;
+          buffer[lastByteIndex] <<= 8 - trailingBitsCount;
+        }
+      } else {
+        appendUnalignedBits(
+          segment.rawBuffer,
+          segment.bitSize,
+          segment.bitOffset
+        );
+      }
+    } else if (segment instanceof Uint8Array) {
+      if (isCursorByteAligned) {
+        buffer.set(segment, cursor / 8);
+        cursor += segment.byteLength * 8;
+      } else {
+        appendUnalignedBits(segment, segment.byteLength * 8, 0);
+      }
+    } else {
+      if (isCursorByteAligned) {
+        buffer[cursor / 8] = segment;
+        cursor += 8;
+      } else {
+        appendUnalignedBits(new Uint8Array([segment]), 8, 0);
+      }
+    }
+  }
+  function appendUnalignedBits(unalignedBits, size2, offset) {
+    if (size2 === 0) {
+      return;
+    }
+    const byteSize = Math.trunc(size2 + 7 / 8);
+    const highBitsCount = cursor % 8;
+    const lowBitsCount = 8 - highBitsCount;
+    let byteIndex = Math.trunc(cursor / 8);
+    for (let i = 0; i < byteSize; i++) {
+      let byte = bitArrayByteAt(unalignedBits, offset, i);
+      if (size2 < 8) {
+        byte >>= 8 - size2;
+        byte <<= 8 - size2;
+      }
+      buffer[byteIndex] |= byte >> highBitsCount;
+      let appendedBitsCount = size2 - Math.max(0, size2 - lowBitsCount);
+      size2 -= appendedBitsCount;
+      cursor += appendedBitsCount;
+      if (size2 === 0) {
+        break;
+      }
+      buffer[++byteIndex] = byte << lowBitsCount;
+      appendedBitsCount = size2 - Math.max(0, size2 - highBitsCount);
+      size2 -= appendedBitsCount;
+      cursor += appendedBitsCount;
+    }
+  }
+  return new BitArray(buffer, bitSize);
+}
+var utf8Encoder;
+function stringBits(string5) {
+  utf8Encoder ??= new TextEncoder();
+  return utf8Encoder.encode(string5);
 }
 var Result = class _Result extends CustomType {
   // @internal
@@ -283,7 +395,7 @@ var Ok = class extends Result {
     return true;
   }
 };
-var Error = class extends Result {
+var Error2 = class extends Result {
   constructor(detail) {
     super();
     this[0] = detail;
@@ -354,14 +466,14 @@ function structurallyCompatibleObjects(a, b) {
   return a.constructor === b.constructor;
 }
 function makeError(variant, module, line, fn, message, extra) {
-  let error = new globalThis.Error(message);
-  error.gleam_error = variant;
-  error.module = module;
-  error.line = line;
-  error.function = fn;
-  error.fn = fn;
-  for (let k in extra) error[k] = extra[k];
-  return error;
+  let error2 = new globalThis.Error(message);
+  error2.gleam_error = variant;
+  error2.module = module;
+  error2.line = line;
+  error2.function = fn;
+  error2.fn = fn;
+  for (let k in extra) error2[k] = extra[k];
+  return error2;
 }
 
 // build/dev/javascript/gleam_stdlib/gleam/option.mjs
@@ -1160,6 +1272,25 @@ function fold(loop$list, loop$initial, loop$fun) {
     }
   }
 }
+function find2(loop$list, loop$is_desired) {
+  while (true) {
+    let list4 = loop$list;
+    let is_desired = loop$is_desired;
+    if (list4.hasLength(0)) {
+      return new Error2(void 0);
+    } else {
+      let first$1 = list4.head;
+      let rest$1 = list4.tail;
+      let $ = is_desired(first$1);
+      if ($) {
+        return new Ok(first$1);
+      } else {
+        loop$list = rest$1;
+        loop$is_desired = is_desired;
+      }
+    }
+  }
+}
 function sequences(loop$list, loop$compare, loop$growing, loop$direction, loop$prev, loop$acc) {
   while (true) {
     let list4 = loop$list;
@@ -1479,6 +1610,9 @@ function sort(list4, compare4) {
 }
 
 // build/dev/javascript/gleam_stdlib/gleam/string.mjs
+function is_empty(str) {
+  return str === "";
+}
 function concat_loop(loop$strings, loop$accumulator) {
   while (true) {
     let strings = loop$strings;
@@ -1495,6 +1629,18 @@ function concat_loop(loop$strings, loop$accumulator) {
 }
 function concat2(strings) {
   return concat_loop(strings, "");
+}
+function do_to_utf_codepoints(string5) {
+  let _pipe = string5;
+  let _pipe$1 = string_to_codepoint_integer_list(_pipe);
+  return map(_pipe$1, codepoint);
+}
+function to_utf_codepoints(string5) {
+  return do_to_utf_codepoints(string5);
+}
+function inspect2(term) {
+  let _pipe = inspect(term);
+  return identity(_pipe);
 }
 
 // build/dev/javascript/gleam_stdlib/gleam/dynamic/decode.mjs
@@ -1519,7 +1665,7 @@ function run(data, decoder) {
   if (errors.hasLength(0)) {
     return new Ok(maybe_invalid_data);
   } else {
-    return new Error(errors);
+    return new Error2(errors);
   }
 }
 function success(data) {
@@ -1620,12 +1766,12 @@ function push_path(layer, path) {
   );
   let errors = map(
     layer[1],
-    (error) => {
-      let _record = error;
+    (error2) => {
+      let _record = error2;
       return new DecodeError(
         _record.expected,
         _record.found,
-        append(path$1, error.path)
+        append(path$1, error2.path)
       );
     }
   );
@@ -1704,6 +1850,22 @@ function identity(x) {
 function to_string(term) {
   return term.toString();
 }
+function float_to_string(float2) {
+  const string5 = float2.toString().replace("+", "");
+  if (string5.indexOf(".") >= 0) {
+    return string5;
+  } else {
+    const index5 = string5.indexOf("e");
+    if (index5 >= 0) {
+      return string5.slice(0, index5) + ".0" + string5.slice(index5);
+    } else {
+      return string5 + ".0";
+    }
+  }
+}
+function lowercase(string5) {
+  return string5.toLowerCase();
+}
 function starts_with(haystack, needle) {
   return haystack.startsWith(needle);
 }
@@ -1731,18 +1893,33 @@ var trim_start_regex = /* @__PURE__ */ new RegExp(
   `^[${unicode_whitespaces}]*`
 );
 var trim_end_regex = /* @__PURE__ */ new RegExp(`[${unicode_whitespaces}]*$`);
+function bit_array_from_string(string5) {
+  return toBitArray([stringBits(string5)]);
+}
+function codepoint(int5) {
+  return new UtfCodepoint(int5);
+}
+function string_to_codepoint_integer_list(string5) {
+  return List.fromArray(Array.from(string5).map((item) => item.codePointAt(0)));
+}
+function utf_codepoint_to_int(utf_codepoint) {
+  return utf_codepoint.value;
+}
 function new_map() {
   return Dict.new();
 }
-function map_get(map4, key) {
-  const value = map4.get(key, NOT_FOUND);
+function map_remove(key, map5) {
+  return map5.delete(key);
+}
+function map_get(map5, key) {
+  const value = map5.get(key, NOT_FOUND);
   if (value === NOT_FOUND) {
-    return new Error(Nil);
+    return new Error2(Nil);
   }
   return new Ok(value);
 }
-function map_insert(key, value, map4) {
-  return map4.set(key, value);
+function map_insert(key, value, map5) {
+  return map5.set(key, value);
 }
 function classify_dynamic(data) {
   if (typeof data === "string") {
@@ -1772,6 +1949,128 @@ function classify_dynamic(data) {
     return type.charAt(0).toUpperCase() + type.slice(1);
   }
 }
+function bitwise_and(x, y) {
+  return Number(BigInt(x) & BigInt(y));
+}
+function bitwise_or(x, y) {
+  return Number(BigInt(x) | BigInt(y));
+}
+function bitwise_shift_left(x, y) {
+  return Number(BigInt(x) << BigInt(y));
+}
+function bitwise_shift_right(x, y) {
+  return Number(BigInt(x) >> BigInt(y));
+}
+function inspect(v) {
+  const t = typeof v;
+  if (v === true) return "True";
+  if (v === false) return "False";
+  if (v === null) return "//js(null)";
+  if (v === void 0) return "Nil";
+  if (t === "string") return inspectString(v);
+  if (t === "bigint" || Number.isInteger(v)) return v.toString();
+  if (t === "number") return float_to_string(v);
+  if (Array.isArray(v)) return `#(${v.map(inspect).join(", ")})`;
+  if (v instanceof List) return inspectList(v);
+  if (v instanceof UtfCodepoint) return inspectUtfCodepoint(v);
+  if (v instanceof BitArray) return `<<${bit_array_inspect(v, "")}>>`;
+  if (v instanceof CustomType) return inspectCustomType(v);
+  if (v instanceof Dict) return inspectDict(v);
+  if (v instanceof Set) return `//js(Set(${[...v].map(inspect).join(", ")}))`;
+  if (v instanceof RegExp) return `//js(${v})`;
+  if (v instanceof Date) return `//js(Date("${v.toISOString()}"))`;
+  if (v instanceof Function) {
+    const args = [];
+    for (const i of Array(v.length).keys())
+      args.push(String.fromCharCode(i + 97));
+    return `//fn(${args.join(", ")}) { ... }`;
+  }
+  return inspectObject(v);
+}
+function inspectString(str) {
+  let new_str = '"';
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    switch (char) {
+      case "\n":
+        new_str += "\\n";
+        break;
+      case "\r":
+        new_str += "\\r";
+        break;
+      case "	":
+        new_str += "\\t";
+        break;
+      case "\f":
+        new_str += "\\f";
+        break;
+      case "\\":
+        new_str += "\\\\";
+        break;
+      case '"':
+        new_str += '\\"';
+        break;
+      default:
+        if (char < " " || char > "~" && char < "\xA0") {
+          new_str += "\\u{" + char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0") + "}";
+        } else {
+          new_str += char;
+        }
+    }
+  }
+  new_str += '"';
+  return new_str;
+}
+function inspectDict(map5) {
+  let body = "dict.from_list([";
+  let first = true;
+  map5.forEach((value, key) => {
+    if (!first) body = body + ", ";
+    body = body + "#(" + inspect(key) + ", " + inspect(value) + ")";
+    first = false;
+  });
+  return body + "])";
+}
+function inspectObject(v) {
+  const name = Object.getPrototypeOf(v)?.constructor?.name || "Object";
+  const props = [];
+  for (const k of Object.keys(v)) {
+    props.push(`${inspect(k)}: ${inspect(v[k])}`);
+  }
+  const body = props.length ? " " + props.join(", ") + " " : "";
+  const head = name === "Object" ? "" : name + " ";
+  return `//js(${head}{${body}})`;
+}
+function inspectCustomType(record) {
+  const props = Object.keys(record).map((label) => {
+    const value = inspect(record[label]);
+    return isNaN(parseInt(label)) ? `${label}: ${value}` : value;
+  }).join(", ");
+  return props ? `${record.constructor.name}(${props})` : record.constructor.name;
+}
+function inspectList(list4) {
+  return `[${list4.toArray().map(inspect).join(", ")}]`;
+}
+function inspectUtfCodepoint(codepoint2) {
+  return `//utfcodepoint(${String.fromCodePoint(codepoint2.value)})`;
+}
+function bit_array_inspect(bits, acc) {
+  if (bits.bitSize === 0) {
+    return acc;
+  }
+  for (let i = 0; i < bits.byteSize - 1; i++) {
+    acc += bits.byteAt(i).toString();
+    acc += ", ";
+  }
+  if (bits.byteSize * 8 === bits.bitSize) {
+    acc += bits.byteAt(bits.byteSize - 1).toString();
+  } else {
+    const trailingBitsCount = bits.bitSize % 8;
+    acc += bits.byteAt(bits.byteSize - 1) >> 8 - trailingBitsCount;
+    acc += `:size(${trailingBitsCount})`;
+  }
+  return acc;
+}
 function index2(data, key) {
   if (data instanceof Dict || data instanceof WeakMap || data instanceof Map) {
     const token2 = {};
@@ -1786,32 +2085,72 @@ function index2(data, key) {
       if (i === key) return new Ok(new Some(value));
       i++;
     }
-    return new Error("Indexable");
+    return new Error2("Indexable");
   }
   if (key_is_int && Array.isArray(data) || data && typeof data === "object" || data && Object.getPrototypeOf(data) === Object.prototype) {
     if (key in data) return new Ok(new Some(data[key]));
     return new Ok(new None());
   }
-  return new Error(key_is_int ? "Indexable" : "Dict");
+  return new Error2(key_is_int ? "Indexable" : "Dict");
 }
 function int(data) {
   if (Number.isInteger(data)) return new Ok(data);
-  return new Error(0);
+  return new Error2(0);
 }
 function string(data) {
   if (typeof data === "string") return new Ok(data);
-  return new Error("");
+  return new Error2("");
 }
 
 // build/dev/javascript/gleam_stdlib/gleam/dict.mjs
 function insert(dict2, key, value) {
   return map_insert(key, value, dict2);
 }
+function delete$(dict2, key) {
+  return map_remove(key, dict2);
+}
+
+// build/dev/javascript/gleam_javascript/gleam_javascript_ffi.mjs
+var PromiseLayer = class _PromiseLayer {
+  constructor(promise) {
+    this.promise = promise;
+  }
+  static wrap(value) {
+    return value instanceof Promise ? new _PromiseLayer(value) : value;
+  }
+  static unwrap(value) {
+    return value instanceof _PromiseLayer ? value.promise : value;
+  }
+};
+function map_promise(promise, fn) {
+  return promise.then(
+    (value) => PromiseLayer.wrap(fn(PromiseLayer.unwrap(value)))
+  );
+}
+
+// build/dev/javascript/gleam_javascript/gleam/javascript/promise.mjs
+function tap(promise, callback) {
+  let _pipe = promise;
+  return map_promise(
+    _pipe,
+    (a) => {
+      callback(a);
+      return a;
+    }
+  );
+}
 
 // build/dev/javascript/gleam_stdlib/gleam/bool.mjs
 function guard(requirement, consequence, alternative) {
   if (requirement) {
     return consequence;
+  } else {
+    return alternative();
+  }
+}
+function lazy_guard(requirement, consequence, alternative) {
+  if (requirement) {
+    return consequence();
   } else {
     return alternative();
   }
@@ -1828,6 +2167,24 @@ function is_ok(result) {
     return false;
   } else {
     return true;
+  }
+}
+function map4(result, fun) {
+  if (result.isOk()) {
+    let x = result[0];
+    return new Ok(fun(x));
+  } else {
+    let e = result[0];
+    return new Error2(e);
+  }
+}
+function try$(result, fun) {
+  if (result.isOk()) {
+    let x = result[0];
+    return fun(x);
+  } else {
+    let e = result[0];
+    return new Error2(e);
   }
 }
 
@@ -1860,7 +2217,7 @@ var EMPTY_SET = /* @__PURE__ */ new$();
 function empty_set() {
   return EMPTY_SET;
 }
-var document = globalThis?.document;
+var document2 = globalThis?.document;
 var NAMESPACE_HTML = "http://www.w3.org/1999/xhtml";
 var ELEMENT_NODE = 1;
 var TEXT_NODE = 3;
@@ -2000,6 +2357,29 @@ function attribute2(name, value) {
 function class$(name) {
   return attribute2("class", name);
 }
+function do_classes(loop$names, loop$class) {
+  while (true) {
+    let names = loop$names;
+    let class$2 = loop$class;
+    if (names.hasLength(0)) {
+      return class$2;
+    } else if (names.atLeastLength(1) && names.head[1]) {
+      let name$1 = names.head[0];
+      let rest = names.tail;
+      return class$2 + name$1 + " " + do_classes(rest, class$2);
+    } else {
+      let rest = names.tail;
+      loop$names = rest;
+      loop$class = class$2;
+    }
+  }
+}
+function classes(names) {
+  return class$(do_classes(names, ""));
+}
+function id(value) {
+  return attribute2("id", value);
+}
 function type_(control_type) {
   return attribute2("type", control_type);
 }
@@ -2021,27 +2401,35 @@ var empty = /* @__PURE__ */ new Effect(
 function none() {
   return empty;
 }
+function from(effect) {
+  let task = (actions) => {
+    let dispatch = actions.dispatch;
+    return effect(dispatch);
+  };
+  let _record = empty;
+  return new Effect(toList([task]), _record.before_paint, _record.after_paint);
+}
 
 // build/dev/javascript/lustre/lustre/internals/mutable_map.ffi.mjs
 function empty2() {
   return null;
 }
-function get(map4, key) {
-  const value = map4?.get(key);
+function get(map5, key) {
+  const value = map5?.get(key);
   if (value != null) {
     return new Ok(value);
   } else {
-    return new Error(void 0);
+    return new Error2(void 0);
   }
 }
-function insert3(map4, key, value) {
-  map4 ??= /* @__PURE__ */ new Map();
-  map4.set(key, value);
-  return map4;
+function insert3(map5, key, value) {
+  map5 ??= /* @__PURE__ */ new Map();
+  map5.set(key, value);
+  return map5;
 }
-function remove(map4, key) {
-  map4?.delete(key);
-  return map4;
+function remove(map5, key) {
+  map5?.delete(key);
+  return map5;
 }
 
 // build/dev/javascript/lustre/lustre/vdom/path.mjs
@@ -2055,9 +2443,9 @@ var Key = class extends CustomType {
   }
 };
 var Index = class extends CustomType {
-  constructor(index4, parent) {
+  constructor(index5, parent) {
     super();
-    this.index = index4;
+    this.index = index5;
     this.parent = parent;
   }
 };
@@ -2080,9 +2468,9 @@ function do_matches(loop$path, loop$candidates) {
     }
   }
 }
-function add2(parent, index4, key) {
+function add2(parent, index5, key) {
   if (key === "") {
-    return new Index(index4, parent);
+    return new Index(index5, parent);
   } else {
     return new Key(key, parent);
   }
@@ -2107,12 +2495,12 @@ function do_to_string(loop$path, loop$acc) {
       loop$path = parent;
       loop$acc = prepend(separator_key, prepend(key, acc));
     } else {
-      let index4 = path.index;
+      let index5 = path.index;
       let parent = path.parent;
       loop$path = parent;
       loop$acc = prepend(
         separator_index,
-        prepend(to_string(index4), acc)
+        prepend(to_string(index5), acc)
       );
     }
   }
@@ -2260,7 +2648,7 @@ function set_fragment_key(loop$key, loop$children, loop$index, loop$new_children
   while (true) {
     let key = loop$key;
     let children = loop$children;
-    let index4 = loop$index;
+    let index5 = loop$index;
     let new_children = loop$new_children;
     let keyed_children = loop$keyed_children;
     if (children.hasLength(0)) {
@@ -2268,7 +2656,7 @@ function set_fragment_key(loop$key, loop$children, loop$index, loop$new_children
     } else if (children.atLeastLength(1) && children.head instanceof Fragment && children.head.key === "") {
       let node = children.head;
       let children$1 = children.tail;
-      let child_key = key + "::" + to_string(index4);
+      let child_key = key + "::" + to_string(index5);
       let $ = set_fragment_key(
         child_key,
         node.children,
@@ -2290,7 +2678,7 @@ function set_fragment_key(loop$key, loop$children, loop$index, loop$new_children
       );
       let new_node = _block;
       let new_children$1 = prepend(new_node, new_children);
-      let index$1 = index4 + 1;
+      let index$1 = index5 + 1;
       loop$key = key;
       loop$children = children$1;
       loop$index = index$1;
@@ -2307,7 +2695,7 @@ function set_fragment_key(loop$key, loop$children, loop$index, loop$new_children
         child_key,
         keyed_node
       );
-      let index$1 = index4 + 1;
+      let index$1 = index5 + 1;
       loop$key = key;
       loop$children = children$1;
       loop$index = index$1;
@@ -2317,7 +2705,7 @@ function set_fragment_key(loop$key, loop$children, loop$index, loop$new_children
       let node = children.head;
       let children$1 = children.tail;
       let new_children$1 = prepend(node, new_children);
-      let index$1 = index4 + 1;
+      let index$1 = index5 + 1;
       loop$key = key;
       loop$children = children$1;
       loop$index = index$1;
@@ -2380,9 +2768,9 @@ function to_keyed(key, node) {
 
 // build/dev/javascript/lustre/lustre/vdom/patch.mjs
 var Patch = class extends CustomType {
-  constructor(index4, removed, changes, children) {
+  constructor(index5, removed, changes, children) {
     super();
-    this.index = index4;
+    this.index = index5;
     this.removed = removed;
     this.changes = changes;
     this.children = children;
@@ -2428,10 +2816,10 @@ var RemoveKey = class extends CustomType {
   }
 };
 var Replace = class extends CustomType {
-  constructor(kind, from, count, with$) {
+  constructor(kind, from2, count, with$) {
     super();
     this.kind = kind;
-    this.from = from;
+    this.from = from2;
     this.count = count;
     this.with = with$;
   }
@@ -2445,15 +2833,15 @@ var Insert = class extends CustomType {
   }
 };
 var Remove = class extends CustomType {
-  constructor(kind, from, count) {
+  constructor(kind, from2, count) {
     super();
     this.kind = kind;
-    this.from = from;
+    this.from = from2;
     this.count = count;
   }
 };
-function new$4(index4, removed, changes, children) {
-  return new Patch(index4, removed, changes, children);
+function new$4(index5, removed, changes, children) {
+  return new Patch(index5, removed, changes, children);
 }
 var replace_text_kind = 0;
 function replace_text(content) {
@@ -2476,16 +2864,16 @@ function remove_key(key, count) {
   return new RemoveKey(remove_key_kind, key, count);
 }
 var replace_kind = 5;
-function replace2(from, count, with$) {
-  return new Replace(replace_kind, from, count, with$);
+function replace2(from2, count, with$) {
+  return new Replace(replace_kind, from2, count, with$);
 }
 var insert_kind = 6;
 function insert4(children, before) {
   return new Insert(insert_kind, children, before);
 }
 var remove_kind = 7;
-function remove2(from, count) {
-  return new Remove(remove_kind, from, count);
+function remove2(from2, count) {
+  return new Remove(remove_kind, from2, count);
 }
 
 // build/dev/javascript/lustre/lustre/vdom/diff.mjs
@@ -3278,11 +3666,11 @@ var Reconciler = class {
       let lastIndex = -1;
       let lastChild = null;
       iterate(patch.children, (child) => {
-        const index4 = child.index | 0;
-        const next = lastChild && lastIndex - index4 === 1 ? lastChild.previousSibling : childAt(node, index4);
+        const index5 = child.index | 0;
+        const next = lastChild && lastIndex - index5 === 1 ? lastChild.previousSibling : childAt(node, index5);
         self.#stack.push({ node: next, patch: child });
         lastChild = next;
-        lastIndex = index4;
+        lastIndex = index5;
       });
     }
   }
@@ -3311,8 +3699,8 @@ var Reconciler = class {
   #removeKey(node, key, count) {
     this.#removeFromChild(node, getKeyedChild(node, key), count);
   }
-  #remove(node, from, count) {
-    this.#removeFromChild(node, childAt(node, from), count);
+  #remove(node, from2, count) {
+    this.#removeFromChild(node, childAt(node, from2), count);
   }
   #removeFromChild(parent, child, count) {
     while (count-- > 0 && child !== null) {
@@ -3328,10 +3716,10 @@ var Reconciler = class {
       child = next;
     }
   }
-  #replace(parent, from, count, child) {
-    this.#remove(parent, from, count);
+  #replace(parent, from2, count, child) {
+    this.#remove(parent, from2, count);
     const el = this.#createChild(parent, child);
-    insertBefore(parent, el, childAt(parent, from));
+    insertBefore(parent, el, childAt(parent, from2));
   }
   #replaceText(node, content) {
     node.data = content ?? "";
@@ -3456,11 +3844,11 @@ var Reconciler = class {
               path = `${separator_key}${key}${path}`;
             } else {
               const siblings = parent.childNodes;
-              let index4 = [].indexOf.call(siblings, pathNode);
+              let index5 = [].indexOf.call(siblings, pathNode);
               if (parent === this.#root) {
-                index4 -= this.offset;
+                index5 -= this.offset;
               }
-              path = `${separator_index}${index4}${path}`;
+              path = `${separator_index}${index5}${path}`;
             }
             pathNode = parent;
           }
@@ -3508,16 +3896,16 @@ var iterate = (list4, callback) => {
 var appendChild = (node, child) => node.appendChild(child);
 var insertBefore = (parent, node, referenceNode) => parent.insertBefore(node, referenceNode ?? null);
 var createChildElement = (parent, { key, tag, namespace }) => {
-  const node = document.createElementNS(namespace || NAMESPACE_HTML, tag);
+  const node = document2.createElementNS(namespace || NAMESPACE_HTML, tag);
   initialiseMetadata(parent, node, key);
   return node;
 };
 var createChildText = (parent, { key, content }) => {
-  const node = document.createTextNode(content ?? "");
+  const node = document2.createTextNode(content ?? "");
   initialiseMetadata(parent, node, key);
   return node;
 };
-var createDocumentFragment = () => document.createDocumentFragment();
+var createDocumentFragment = () => document2.createDocumentFragment();
 var childAt = (node, at) => node.childNodes[at | 0];
 var meta = Symbol("lustre");
 var initialiseMetadata = (parent, node, key = "") => {
@@ -3624,7 +4012,7 @@ var virtualise = (root3) => {
   }
 };
 var emptyTextNode = (parent) => {
-  const node = document.createTextNode("");
+  const node = document2.createTextNode("");
   initialiseMetadata(parent, node);
   return node;
 };
@@ -3669,7 +4057,7 @@ var virtualiseInputEvents = (tag, node) => {
     node.checked = checked;
     node.dispatchEvent(new Event("input", { bubbles: true }));
     node.dispatchEvent(new Event("change", { bubbles: true }));
-    if (document.activeElement !== node) {
+    if (document2.activeElement !== node) {
       node.dispatchEvent(new Event("blur", { bubbles: true }));
     }
   });
@@ -3690,11 +4078,11 @@ var virtualiseChildNodes = (node) => {
   return children;
 };
 var virtualiseAttributes = (node) => {
-  let index4 = node.attributes.length;
+  let index5 = node.attributes.length;
   let attributes = empty_list;
-  while (index4-- > 0) {
+  while (index5-- > 0) {
     attributes = new NonEmpty(
-      virtualiseAttribute(node.attributes[index4]),
+      virtualiseAttribute(node.attributes[index5]),
       attributes
     );
   }
@@ -3707,7 +4095,7 @@ var virtualiseAttribute = (attr) => {
 };
 
 // build/dev/javascript/lustre/lustre/runtime/client/runtime.ffi.mjs
-var is_browser = () => !!document;
+var is_browser = () => !!document2;
 var is_reference_equal = (a, b) => a === b;
 var Runtime = class {
   constructor(root3, [model, effects], view3, update3) {
@@ -3906,7 +4294,7 @@ function handle(events, path, name, event4) {
     let handler = $[0];
     return [events$1, run(event4, handler)];
   } else {
-    return [events$1, new Error(toList([]))];
+    return [events$1, new Error2(toList([]))];
   }
 }
 function has_dispatched_events(events, path) {
@@ -4055,8 +4443,8 @@ function do_add_child(handlers, mapper, parent, child_index, child) {
     return handlers;
   }
 }
-function add_child(events, mapper, parent, index4, child) {
-  let handlers = do_add_child(events.handlers, mapper, parent, index4, child);
+function add_child(events, mapper, parent, index5, child) {
+  let handlers = do_add_child(events.handlers, mapper, parent, index5, child);
   let _record = events;
   return new Events(
     handlers,
@@ -4212,9 +4600,9 @@ function new$6(options) {
 // build/dev/javascript/lustre/lustre/runtime/client/spa.ffi.mjs
 var Spa = class _Spa {
   static start({ init: init3, update: update3, view: view3 }, selector, flags) {
-    if (!is_browser()) return new Error(new NotABrowser());
-    const root3 = selector instanceof HTMLElement ? selector : document.querySelector(selector);
-    if (!root3) return new Error(new ElementNotFound(selector));
+    if (!is_browser()) return new Error2(new NotABrowser());
+    const root3 = selector instanceof HTMLElement ? selector : document2.querySelector(selector);
+    if (!root3) return new Error2(new ElementNotFound(selector));
     return new Ok(new _Spa(root3, init3(flags), update3, view3));
   }
   #runtime;
@@ -4265,19 +4653,10 @@ var NotABrowser = class extends CustomType {
 function application(init3, update3, view3) {
   return new App(init3, update3, view3, new$6(empty_list));
 }
-function simple(init3, update3, view3) {
-  let init$1 = (start_args) => {
-    return [init3(start_args), none()];
-  };
-  let update$1 = (model, msg) => {
-    return [update3(model, msg), none()];
-  };
-  return application(init$1, update$1, view3);
-}
 function start3(app, selector, start_args) {
   return guard(
     !is_browser(),
-    new Error(new NotABrowser()),
+    new Error2(new NotABrowser()),
     () => {
       return start(app, selector, start_args);
     }
@@ -4330,13 +4709,6 @@ function on_change(msg) {
 }
 
 // build/dev/javascript/neb_stats/data/report.mjs
-var Ship = class extends CustomType {
-  constructor(name, class$2) {
-    super();
-    this.name = name;
-    this.class = class$2;
-  }
-};
 var Player = class extends CustomType {
   constructor(name, ships) {
     super();
@@ -4357,16 +4729,6 @@ var Report = class extends CustomType {
     this.team_b = team_b;
   }
 };
-function dummy_report() {
-  return new Report(
-    new Team(
-      toList([new Player("Alice", toList([new Ship("Ship A", "Class A")]))])
-    ),
-    new Team(
-      toList([new Player("Bob", toList([new Ship("Ship B", "Class B")]))])
-    )
-  );
-}
 
 // build/dev/javascript/neb_stats/pages/report.mjs
 var PageState = class extends CustomType {
@@ -4435,11 +4797,4719 @@ function view(state) {
   return div(toList([class$("box")]), toList([team_a_box, team_b_box]));
 }
 
+// build/dev/javascript/xmlm/xmlm_ffi.mjs
+function int_list_to_string(int_list) {
+  const array3 = new Uint8Array(int_list.toArray());
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  return decoder.decode(array3);
+}
+function bit_array_to_list(bit_array2) {
+  return List.fromArray(bit_array2.buffer);
+}
+
+// build/dev/javascript/xmlm/xmlm.mjs
+var UnicodeLexerEoi = class extends CustomType {
+};
+var UnicodeLexerMalformed = class extends CustomType {
+};
+var Utf8 = class extends CustomType {
+};
+var Utf16 = class extends CustomType {
+};
+var Utf16Be = class extends CustomType {
+};
+var Iso8859x1 = class extends CustomType {
+};
+var Iso8859x15 = class extends CustomType {
+};
+var UsAscii = class extends CustomType {
+};
+var Name = class extends CustomType {
+  constructor(uri, local) {
+    super();
+    this.uri = uri;
+    this.local = local;
+  }
+};
+var Attribute2 = class extends CustomType {
+  constructor(name, value) {
+    super();
+    this.name = name;
+    this.value = value;
+  }
+};
+var Tag = class extends CustomType {
+  constructor(name, attributes) {
+    super();
+    this.name = name;
+    this.attributes = attributes;
+  }
+};
+var Dtd = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var ElementStart = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var ElementEnd = class extends CustomType {
+};
+var Data = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var Position = class extends CustomType {
+  constructor(line, column) {
+    super();
+    this.line = line;
+    this.column = column;
+  }
+};
+var ExpectedCharSeqs = class extends CustomType {
+  constructor(expected, actual) {
+    super();
+    this.expected = expected;
+    this.actual = actual;
+  }
+};
+var ExpectedRootElement = class extends CustomType {
+};
+var IllegalCharRef = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var IllegalCharSeq = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var MalformedCharStream = class extends CustomType {
+};
+var MaxBufferSize = class extends CustomType {
+};
+var UnexpectedEoi = class extends CustomType {
+};
+var UnknownEncoding = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var UnknownEntityRef = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var UnknownNsPrefix = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var UnicodeLexerErrorEoi = class extends CustomType {
+};
+var UnicodeLexerErrorMalformed = class extends CustomType {
+};
+var InputError = class extends CustomType {
+  constructor(x0, x1) {
+    super();
+    this[0] = x0;
+    this[1] = x1;
+  }
+};
+var LimitStartTag = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var LimitEndTag = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var LimitPi = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var LimitComment = class extends CustomType {
+};
+var LimitCData = class extends CustomType {
+};
+var LimitDtd = class extends CustomType {
+};
+var LimitText = class extends CustomType {
+};
+var LimitEoi = class extends CustomType {
+};
+var Input = class extends CustomType {
+  constructor(encoding, strip, namespace_callback, entity_callback, uchar, stream, char, cr, line, column, limit, peek2, stripping, last_whitespace, scopes, ns, identifier, data) {
+    super();
+    this.encoding = encoding;
+    this.strip = strip;
+    this.namespace_callback = namespace_callback;
+    this.entity_callback = entity_callback;
+    this.uchar = uchar;
+    this.stream = stream;
+    this.char = char;
+    this.cr = cr;
+    this.line = line;
+    this.column = column;
+    this.limit = limit;
+    this.peek = peek2;
+    this.stripping = stripping;
+    this.last_whitespace = last_whitespace;
+    this.scopes = scopes;
+    this.ns = ns;
+    this.identifier = identifier;
+    this.data = data;
+  }
+};
+var LoopDoneExited = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var LoopDoneByCondition = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var Go = class extends CustomType {
+};
+var Stop = class extends CustomType {
+};
+function uchar_byte(stream) {
+  if (stream.atLeastLength(1)) {
+    let byte = stream.head;
+    let rest = stream.tail;
+    return new Ok([byte, rest]);
+  } else {
+    return new Error2(new UnicodeLexerEoi());
+  }
+}
+function uchar_iso_8859_1(stream) {
+  if (stream.atLeastLength(1)) {
+    let byte = stream.head;
+    let rest = stream.tail;
+    return new Ok([byte, rest]);
+  } else {
+    return new Error2(new UnicodeLexerEoi());
+  }
+}
+function uchar_iso_8859_15(stream) {
+  if (stream.atLeastLength(1) && stream.head === 164) {
+    let rest = stream.tail;
+    return new Ok([8364, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 166) {
+    let rest = stream.tail;
+    return new Ok([352, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 168) {
+    let rest = stream.tail;
+    return new Ok([353, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 180) {
+    let rest = stream.tail;
+    return new Ok([381, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 184) {
+    let rest = stream.tail;
+    return new Ok([382, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 188) {
+    let rest = stream.tail;
+    return new Ok([338, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 189) {
+    let rest = stream.tail;
+    return new Ok([339, rest]);
+  } else if (stream.atLeastLength(1) && stream.head === 190) {
+    let rest = stream.tail;
+    return new Ok([376, rest]);
+  } else if (stream.atLeastLength(1)) {
+    let char = stream.head;
+    let rest = stream.tail;
+    return new Ok([char, rest]);
+  } else {
+    return new Error2(new UnicodeLexerEoi());
+  }
+}
+function most_significant_bytes_are_not_10(n) {
+  return bitwise_and(n, 192) !== 128;
+}
+function do_uchar_utf8_len2(stream, byte0) {
+  if (stream.atLeastLength(1)) {
+    let byte1 = stream.head;
+    let stream$1 = stream.tail;
+    let $ = (() => {
+      let _pipe = byte1;
+      return most_significant_bytes_are_not_10(_pipe);
+    })();
+    if ($) {
+      return new Error2(new UnicodeLexerMalformed());
+    } else {
+      let _block;
+      let _pipe = bitwise_and(byte0, 31);
+      let _pipe$1 = bitwise_shift_left(_pipe, 6);
+      _block = bitwise_or(_pipe$1, bitwise_and(byte1, 63));
+      let result = _block;
+      return new Ok([result, stream$1]);
+    }
+  } else {
+    return new Error2(new UnicodeLexerEoi());
+  }
+}
+function do_uchar_utf8_len3(stream, byte0) {
+  if (stream.atLeastLength(2)) {
+    let byte1 = stream.head;
+    let byte2 = stream.tail.head;
+    let stream$1 = stream.tail.tail;
+    let $ = (() => {
+      let _pipe = byte2;
+      return most_significant_bytes_are_not_10(_pipe);
+    })();
+    if ($) {
+      return new Error2(new UnicodeLexerMalformed());
+    } else {
+      let $1 = byte0 === 224 && (byte1 < 160 || 191 < byte1);
+      if ($1) {
+        return new Error2(new UnicodeLexerMalformed());
+      } else {
+        let $2 = byte0 === 237 && (byte1 < 128 || 159 < byte1);
+        if ($2) {
+          return new Error2(new UnicodeLexerMalformed());
+        } else {
+          let $3 = (() => {
+            let _pipe = byte1;
+            return most_significant_bytes_are_not_10(_pipe);
+          })();
+          if ($3) {
+            return new Error2(new UnicodeLexerMalformed());
+          } else {
+            let _block;
+            let _pipe = byte0;
+            let _pipe$1 = bitwise_and(_pipe, 15);
+            _block = bitwise_shift_left(_pipe$1, 12);
+            let b0 = _block;
+            let _block$1;
+            let _pipe$2 = byte1;
+            let _pipe$3 = bitwise_and(_pipe$2, 63);
+            _block$1 = bitwise_shift_left(_pipe$3, 6);
+            let b1 = _block$1;
+            let _block$2;
+            let _pipe$4 = byte2;
+            _block$2 = bitwise_and(_pipe$4, 63);
+            let b2 = _block$2;
+            let _block$3;
+            let _pipe$5 = b0;
+            let _pipe$6 = bitwise_or(_pipe$5, b1);
+            _block$3 = bitwise_or(_pipe$6, b2);
+            let result = _block$3;
+            return new Ok([result, stream$1]);
+          }
+        }
+      }
+    }
+  } else if (stream.hasLength(0)) {
+    return new Error2(new UnicodeLexerEoi());
+  } else {
+    return new Error2(new UnicodeLexerMalformed());
+  }
+}
+function do_uchar_utf8_len4(stream, byte0) {
+  if (stream.atLeastLength(3)) {
+    let byte1 = stream.head;
+    let byte2 = stream.tail.head;
+    let byte3 = stream.tail.tail.head;
+    let stream$1 = stream.tail.tail.tail;
+    let $ = most_significant_bytes_are_not_10(byte3) || most_significant_bytes_are_not_10(
+      byte2
+    );
+    if ($) {
+      return new Error2(new UnicodeLexerMalformed());
+    } else {
+      let $1 = byte0 === 240 && (byte1 < 144 || 191 < byte1);
+      if ($1) {
+        return new Error2(new UnicodeLexerMalformed());
+      } else {
+        let $2 = byte0 === 244 && (byte1 < 128 || 143 < byte1);
+        if ($2) {
+          return new Error2(new UnicodeLexerMalformed());
+        } else {
+          let $3 = (() => {
+            let _pipe = byte1;
+            return most_significant_bytes_are_not_10(_pipe);
+          })();
+          if ($3) {
+            return new Error2(new UnicodeLexerMalformed());
+          } else {
+            let _block;
+            let _pipe = byte0;
+            let _pipe$1 = bitwise_and(_pipe, 7);
+            _block = bitwise_shift_left(_pipe$1, 18);
+            let b0 = _block;
+            let _block$1;
+            let _pipe$2 = byte1;
+            let _pipe$3 = bitwise_and(_pipe$2, 63);
+            _block$1 = bitwise_shift_left(_pipe$3, 12);
+            let b1 = _block$1;
+            let _block$2;
+            let _pipe$4 = byte2;
+            let _pipe$5 = bitwise_and(_pipe$4, 63);
+            _block$2 = bitwise_shift_left(_pipe$5, 6);
+            let b2 = _block$2;
+            let _block$3;
+            let _pipe$6 = byte3;
+            _block$3 = bitwise_and(_pipe$6, 63);
+            let b3 = _block$3;
+            let _block$4;
+            let _pipe$7 = b0;
+            let _pipe$8 = bitwise_or(_pipe$7, b1);
+            let _pipe$9 = bitwise_or(_pipe$8, b2);
+            _block$4 = bitwise_or(_pipe$9, b3);
+            let result = _block$4;
+            return new Ok([result, stream$1]);
+          }
+        }
+      }
+    }
+  } else if (stream.hasLength(0)) {
+    return new Error2(new UnicodeLexerEoi());
+  } else {
+    return new Error2(new UnicodeLexerMalformed());
+  }
+}
+function uchar_utf8(stream) {
+  if (stream.atLeastLength(1)) {
+    let byte0 = stream.head;
+    let bytes = stream.tail;
+    if (0 <= byte0 && byte0 <= 127) {
+      let n = byte0;
+      return new Ok([byte0, bytes]);
+    } else if (128 <= byte0 && byte0 <= 193) {
+      let n = byte0;
+      return new Error2(new UnicodeLexerMalformed());
+    } else if (194 <= byte0 && byte0 <= 223) {
+      let n = byte0;
+      return do_uchar_utf8_len2(bytes, byte0);
+    } else if (224 <= byte0 && byte0 <= 239) {
+      let n = byte0;
+      return do_uchar_utf8_len3(bytes, byte0);
+    } else if (240 <= byte0 && byte0 <= 244) {
+      let n = byte0;
+      return do_uchar_utf8_len4(bytes, byte0);
+    } else {
+      return new Error2(new UnicodeLexerMalformed());
+    }
+  } else {
+    return new Error2(new UnicodeLexerEoi());
+  }
+}
+function int16_be(stream) {
+  if (stream.atLeastLength(2)) {
+    let byte0 = stream.head;
+    let byte1 = stream.tail.head;
+    let stream$1 = stream.tail.tail;
+    let _block;
+    let _pipe = byte0;
+    let _pipe$1 = bitwise_shift_left(_pipe, 8);
+    _block = bitwise_or(_pipe$1, byte1);
+    let char = _block;
+    return new Ok([char, stream$1]);
+  } else if (stream.hasLength(0)) {
+    return new Error2(new UnicodeLexerEoi());
+  } else {
+    return new Error2(new UnicodeLexerMalformed());
+  }
+}
+function int16_le(stream) {
+  if (stream.atLeastLength(2)) {
+    let byte0 = stream.head;
+    let byte1 = stream.tail.head;
+    let stream$1 = stream.tail.tail;
+    let _block;
+    let _pipe = byte1;
+    let _pipe$1 = bitwise_shift_left(_pipe, 8);
+    _block = bitwise_or(_pipe$1, byte0);
+    let char = _block;
+    return new Ok([char, stream$1]);
+  } else if (stream.hasLength(0)) {
+    return new Error2(new UnicodeLexerEoi());
+  } else {
+    return new Error2(new UnicodeLexerMalformed());
+  }
+}
+function uchar_utf16(int16) {
+  return (stream) => {
+    let $ = int16(stream);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(e);
+    } else {
+      let char0 = $[0][0];
+      let stream$1 = $[0][1];
+      if (char0 < 55296 || char0 > 57343) {
+        let char0$1 = char0;
+        return new Ok([char0$1, stream$1]);
+      } else if (char0 > 56319) {
+        let char0$1 = char0;
+        return new Error2(new UnicodeLexerMalformed());
+      } else {
+        let char0$1 = char0;
+        let $1 = int16(stream$1);
+        if (!$1.isOk()) {
+          let e = $1[0];
+          return new Error2(e);
+        } else {
+          let char1 = $1[0][0];
+          let stream$2 = $1[0][1];
+          let char = bitwise_or(
+            bitwise_shift_left(bitwise_and(char0$1, 1023), 10),
+            bitwise_and(char1, 1023)
+          ) + 65536;
+          return new Ok([char, stream$2]);
+        }
+      }
+    }
+  };
+}
+function uchar_ascii(stream) {
+  if (stream.atLeastLength(1) && stream.head <= 127) {
+    let byte = stream.head;
+    let rest = stream.tail;
+    return new Ok([byte, rest]);
+  } else if (stream.hasLength(0)) {
+    return new Error2(new UnicodeLexerEoi());
+  } else {
+    return new Error2(new UnicodeLexerMalformed());
+  }
+}
+function name_to_string(name) {
+  let uri = name.uri;
+  let local = name.local;
+  if (uri === "") {
+    return inspect2(local);
+  } else {
+    let uri$1 = uri;
+    return inspect2(uri$1 + ":" + local);
+  }
+}
+function signal_start_stream() {
+  return new Data("");
+}
+function position_to_string(position) {
+  return "Position(line: " + to_string(position.line) + ", column: " + to_string(
+    position.column
+  ) + ")";
+}
+function internal_input_error_from_unicode_lexer_error(unicode_lexer_error) {
+  if (unicode_lexer_error instanceof UnicodeLexerEoi) {
+    return new UnicodeLexerErrorEoi();
+  } else {
+    return new UnicodeLexerErrorMalformed();
+  }
+}
+function internal_error_message(input_error) {
+  let bracket = (l, v, r) => {
+    return l + v + r;
+  };
+  if (input_error instanceof ExpectedCharSeqs) {
+    let expected = input_error.expected;
+    let actual = input_error.actual;
+    let expected$1 = fold(
+      expected,
+      "",
+      (acc, v) => {
+        return acc + bracket('"', v, '", ');
+      }
+    );
+    return "expected one of these character sequence: " + expected$1 + 'found "' + actual + '"';
+  } else if (input_error instanceof ExpectedRootElement) {
+    return "expected root element";
+  } else if (input_error instanceof IllegalCharRef) {
+    let msg = input_error[0];
+    return bracket("illegal character reference (#", msg, ")");
+  } else if (input_error instanceof IllegalCharSeq) {
+    let msg = input_error[0];
+    return bracket('character sequence illegal here ("', msg, '")');
+  } else if (input_error instanceof MalformedCharStream) {
+    return "malformed character stream";
+  } else if (input_error instanceof MaxBufferSize) {
+    return "maximal buffer size exceeded";
+  } else if (input_error instanceof UnexpectedEoi) {
+    return "unexpected end of input";
+  } else if (input_error instanceof UnknownEncoding) {
+    let msg = input_error[0];
+    return bracket("unknown encoding (", msg, ")");
+  } else if (input_error instanceof UnknownEntityRef) {
+    let msg = input_error[0];
+    return bracket("unknown entity reference (", msg, ")");
+  } else if (input_error instanceof UnknownNsPrefix) {
+    let msg = input_error[0];
+    return bracket("unknown namespace prefix (", msg, ")");
+  } else if (input_error instanceof UnicodeLexerErrorEoi) {
+    return "unicode lexer error eoi";
+  } else if (input_error instanceof UnicodeLexerErrorMalformed) {
+    return "unicode lexer error malformed";
+  } else {
+    let msg = input_error[0];
+    return bracket("invalid argument (", msg, ")");
+  }
+}
+function input_error_new(input2, input_error) {
+  return new InputError(new Position(input2.line, input2.column), input_error);
+}
+function make_input_uchar(uchar_lexer) {
+  return (input2) => {
+    let $ = uchar_lexer(input2.stream);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(
+        input_error_new(input2, internal_input_error_from_unicode_lexer_error(e))
+      );
+    } else {
+      let uchar = $[0][0];
+      let stream = $[0][1];
+      let _block;
+      let _record = input2;
+      _block = new Input(
+        _record.encoding,
+        _record.strip,
+        _record.namespace_callback,
+        _record.entity_callback,
+        _record.uchar,
+        stream,
+        _record.char,
+        _record.cr,
+        _record.line,
+        _record.column,
+        _record.limit,
+        _record.peek,
+        _record.stripping,
+        _record.last_whitespace,
+        _record.scopes,
+        _record.ns,
+        _record.identifier,
+        _record.data
+      );
+      let input$1 = _block;
+      return new Ok([uchar, input$1]);
+    }
+  };
+}
+function input_uchar_byte() {
+  return make_input_uchar(uchar_byte);
+}
+function input_uchar_iso_8859_1() {
+  return make_input_uchar(uchar_iso_8859_1);
+}
+function input_uchar_iso_8859_15() {
+  return make_input_uchar(uchar_iso_8859_15);
+}
+function input_uchar_utf8() {
+  return make_input_uchar(uchar_utf8);
+}
+function input_uchar_utf16be() {
+  return make_input_uchar(uchar_utf16(int16_be));
+}
+function input_uchar_utf16le() {
+  return make_input_uchar(uchar_utf16(int16_le));
+}
+function input_uchar_ascii() {
+  return make_input_uchar(uchar_ascii);
+}
+function input_error_to_string(input_error) {
+  let position = input_error[0];
+  let input_error$1 = input_error[1];
+  return "ERROR " + position_to_string(position) + " " + internal_error_message(
+    input_error$1
+  );
+}
+function error(input2, err) {
+  return new Error2(new InputError(new Position(input2.line, input2.column), err));
+}
+function error_expected_seqs(input2, expected, actual) {
+  return error(input2, new ExpectedCharSeqs(expected, actual));
+}
+function with_stripping(input2, stripping) {
+  let _record = input2;
+  return new Input(
+    _record.encoding,
+    _record.strip,
+    _record.namespace_callback,
+    _record.entity_callback,
+    _record.uchar,
+    _record.stream,
+    _record.char,
+    _record.cr,
+    _record.line,
+    _record.column,
+    _record.limit,
+    _record.peek,
+    stripping,
+    _record.last_whitespace,
+    _record.scopes,
+    _record.ns,
+    _record.identifier,
+    _record.data
+  );
+}
+function is_in_range(uchar, low, high) {
+  return low <= uchar && uchar <= high;
+}
+function is_whitespace(int5) {
+  if (int5 === 32) {
+    return true;
+  } else if (int5 === 9) {
+    return true;
+  } else if (int5 === 13) {
+    return true;
+  } else if (int5 === 10) {
+    return true;
+  } else {
+    return false;
+  }
+}
+function is_char(uchar) {
+  if (32 <= uchar && uchar <= 55295) {
+    let uchar$1 = uchar;
+    return true;
+  } else if (uchar === 9) {
+    return true;
+  } else if (uchar === 10) {
+    return true;
+  } else if (uchar === 13) {
+    return true;
+  } else if (57344 <= uchar && uchar <= 65533) {
+    let uchar$1 = uchar;
+    return true;
+  } else if (65536 <= uchar && uchar <= 1114111) {
+    let uchar$1 = uchar;
+    return true;
+  } else {
+    return false;
+  }
+}
+function is_digit(uchar) {
+  let _pipe = uchar;
+  return is_in_range(_pipe, 48, 57);
+}
+function is_hex_digit(uchar) {
+  return is_in_range(uchar, 48, 57) || is_in_range(uchar, 65, 70) || is_in_range(
+    uchar,
+    97,
+    102
+  );
+}
+function is_common_range(uchar) {
+  return is_in_range(uchar, 192, 214) || is_in_range(
+    uchar,
+    216,
+    246
+  ) || is_in_range(uchar, 248, 767) || is_in_range(uchar, 880, 893) || is_in_range(
+    uchar,
+    895,
+    8191
+  ) || is_in_range(uchar, 8204, 8205) || is_in_range(
+    uchar,
+    8304,
+    8591
+  ) || is_in_range(uchar, 11264, 12271) || is_in_range(
+    uchar,
+    12289,
+    55295
+  ) || is_in_range(uchar, 63744, 64975) || is_in_range(
+    uchar,
+    65008,
+    65533
+  ) || is_in_range(uchar, 65536, 983039);
+}
+function is_name_start_char(uchar) {
+  return !is_whitespace(uchar) && (is_in_range(uchar, 97, 122) || is_in_range(
+    uchar,
+    65,
+    90
+  ) || uchar === 95 || is_common_range(uchar));
+}
+function is_name_char(uchar) {
+  return !is_whitespace(uchar) && (is_in_range(uchar, 97, 122) || is_in_range(
+    uchar,
+    65,
+    90
+  ) || is_in_range(uchar, 48, 57) || uchar === 95 || uchar === 45 || uchar === 46 || uchar === 183 || is_common_range(
+    uchar
+  ) || is_in_range(uchar, 768, 879) || is_in_range(uchar, 8255, 8256));
+}
+function expand_name(input2, name) {
+  let prefix = name.uri;
+  let local = name.local;
+  let external_ = (prefix2) => {
+    let $2 = input2.namespace_callback(prefix2);
+    if ($2 instanceof None) {
+      return error(input2, new UnknownNsPrefix(prefix2));
+    } else {
+      let uri = $2[0];
+      return new Ok(uri);
+    }
+  };
+  let $ = map_get(input2.ns, prefix);
+  if ($.isOk()) {
+    let uri = $[0];
+    let $1 = !is_empty(uri);
+    if ($1) {
+      return new Ok(new Name(uri, local));
+    } else {
+      let $2 = is_empty(prefix);
+      if ($2) {
+        return new Ok(new Name("", local));
+      } else {
+        let $3 = external_(prefix);
+        if ($3.isOk()) {
+          let uri$1 = $3[0];
+          return new Ok(new Name(uri$1, local));
+        } else {
+          let msg = $3[0];
+          return new Error2(msg);
+        }
+      }
+    }
+  } else {
+    let $1 = external_(prefix);
+    if ($1.isOk()) {
+      let uri = $1[0];
+      return new Ok(new Name(uri, local));
+    } else {
+      let msg = $1[0];
+      return new Error2(msg);
+    }
+  }
+}
+function predefined_entities() {
+  let _pipe = new_map();
+  let _pipe$1 = insert(_pipe, "lt", "<");
+  let _pipe$2 = insert(_pipe$1, "gt", ">");
+  let _pipe$3 = insert(_pipe$2, "amp", "&");
+  let _pipe$4 = insert(_pipe$3, "apos", "'");
+  return insert(_pipe$4, "quot", '"');
+}
+function buffer_new() {
+  return toList([]);
+}
+function buffer_add_uchar(buffer, uchar) {
+  let $ = uchar <= 127;
+  if ($) {
+    return prepend(uchar, buffer);
+  } else {
+    let $1 = uchar <= 2047;
+    if ($1) {
+      return prepend(
+        bitwise_or(128, bitwise_and(uchar, 63)),
+        prepend(
+          bitwise_or(192, bitwise_shift_right(uchar, 6)),
+          buffer
+        )
+      );
+    } else {
+      let $2 = uchar <= 65535;
+      if ($2) {
+        return prepend(
+          bitwise_or(128, bitwise_and(uchar, 63)),
+          prepend(
+            bitwise_or(
+              128,
+              bitwise_and(bitwise_shift_right(uchar, 6), 63)
+            ),
+            prepend(
+              bitwise_or(224, bitwise_shift_right(uchar, 12)),
+              buffer
+            )
+          )
+        );
+      } else {
+        return prepend(
+          bitwise_or(128, bitwise_and(uchar, 63)),
+          prepend(
+            bitwise_or(
+              128,
+              bitwise_and(bitwise_shift_right(uchar, 6), 63)
+            ),
+            prepend(
+              bitwise_or(
+                128,
+                bitwise_and(bitwise_shift_right(uchar, 12), 63)
+              ),
+              prepend(
+                bitwise_or(240, bitwise_shift_right(uchar, 18)),
+                buffer
+              )
+            )
+          )
+        );
+      }
+    }
+  }
+}
+function add_char_to_identifier(input2, char) {
+  let _record = input2;
+  return new Input(
+    _record.encoding,
+    _record.strip,
+    _record.namespace_callback,
+    _record.entity_callback,
+    _record.uchar,
+    _record.stream,
+    _record.char,
+    _record.cr,
+    _record.line,
+    _record.column,
+    _record.limit,
+    _record.peek,
+    _record.stripping,
+    _record.last_whitespace,
+    _record.scopes,
+    _record.ns,
+    buffer_add_uchar(input2.identifier, char),
+    _record.data
+  );
+}
+function add_char_to_data(input2, char) {
+  let _record = input2;
+  return new Input(
+    _record.encoding,
+    _record.strip,
+    _record.namespace_callback,
+    _record.entity_callback,
+    _record.uchar,
+    _record.stream,
+    _record.char,
+    _record.cr,
+    _record.line,
+    _record.column,
+    _record.limit,
+    _record.peek,
+    _record.stripping,
+    _record.last_whitespace,
+    _record.scopes,
+    _record.ns,
+    _record.identifier,
+    buffer_add_uchar(input2.data, char)
+  );
+}
+function buffer_clear(_) {
+  return toList([]);
+}
+function clear_identifier(input2) {
+  let _record = input2;
+  return new Input(
+    _record.encoding,
+    _record.strip,
+    _record.namespace_callback,
+    _record.entity_callback,
+    _record.uchar,
+    _record.stream,
+    _record.char,
+    _record.cr,
+    _record.line,
+    _record.column,
+    _record.limit,
+    _record.peek,
+    _record.stripping,
+    _record.last_whitespace,
+    _record.scopes,
+    _record.ns,
+    buffer_clear(input2.identifier),
+    _record.data
+  );
+}
+function clear_data(input2) {
+  let _record = input2;
+  return new Input(
+    _record.encoding,
+    _record.strip,
+    _record.namespace_callback,
+    _record.entity_callback,
+    _record.uchar,
+    _record.stream,
+    _record.char,
+    _record.cr,
+    _record.line,
+    _record.column,
+    _record.limit,
+    _record.peek,
+    _record.stripping,
+    _record.last_whitespace,
+    _record.scopes,
+    _record.ns,
+    _record.identifier,
+    buffer_clear(input2.data)
+  );
+}
+function buffer_to_string(buffer) {
+  let _pipe = reverse(buffer);
+  return int_list_to_string(_pipe);
+}
+function input_identifier_to_string(input2) {
+  let _pipe = input2.identifier;
+  return buffer_to_string(_pipe);
+}
+function input_data_to_string(input2) {
+  let _pipe = input2.data;
+  return buffer_to_string(_pipe);
+}
+function string_from_char(char) {
+  let _pipe = buffer_new();
+  let _pipe$1 = buffer_add_uchar(_pipe, char);
+  return buffer_to_string(_pipe$1);
+}
+function error_illegal_char(input2, uchar) {
+  return error(input2, new IllegalCharSeq(string_from_char(uchar)));
+}
+function error_expected_chars(input2, expected) {
+  let expected$1 = map(expected, string_from_char);
+  return error(
+    input2,
+    new ExpectedCharSeqs(expected$1, string_from_char(input2.char))
+  );
+}
+var u_eoi = 9007199254740991;
+var u_start_doc = 9007199254740990;
+var u_end_doc = 9007199254740989;
+var u_nl = 10;
+var u_cr = 13;
+function next_char(input2) {
+  let $ = input2.char === u_eoi;
+  if ($) {
+    return error(input2, new UnexpectedEoi());
+  } else {
+    let _block;
+    let $1 = input2.char === u_nl;
+    if ($1) {
+      let _record = input2;
+      _block = new Input(
+        _record.encoding,
+        _record.strip,
+        _record.namespace_callback,
+        _record.entity_callback,
+        _record.uchar,
+        _record.stream,
+        _record.char,
+        _record.cr,
+        input2.line + 1,
+        1,
+        _record.limit,
+        _record.peek,
+        _record.stripping,
+        _record.last_whitespace,
+        _record.scopes,
+        _record.ns,
+        _record.identifier,
+        _record.data
+      );
+    } else {
+      let _record = input2;
+      _block = new Input(
+        _record.encoding,
+        _record.strip,
+        _record.namespace_callback,
+        _record.entity_callback,
+        _record.uchar,
+        _record.stream,
+        _record.char,
+        _record.cr,
+        _record.line,
+        input2.column + 1,
+        _record.limit,
+        _record.peek,
+        _record.stripping,
+        _record.last_whitespace,
+        _record.scopes,
+        _record.ns,
+        _record.identifier,
+        _record.data
+      );
+    }
+    let input$1 = _block;
+    let $2 = input$1.uchar(input$1);
+    if (!$2.isOk()) {
+      let e = $2[0];
+      return new Error2(e);
+    } else {
+      let char = $2[0][0];
+      let input$2 = $2[0][1];
+      let _block$1;
+      let _record = input$2;
+      _block$1 = new Input(
+        _record.encoding,
+        _record.strip,
+        _record.namespace_callback,
+        _record.entity_callback,
+        _record.uchar,
+        _record.stream,
+        char,
+        _record.cr,
+        _record.line,
+        _record.column,
+        _record.limit,
+        _record.peek,
+        _record.stripping,
+        _record.last_whitespace,
+        _record.scopes,
+        _record.ns,
+        _record.identifier,
+        _record.data
+      );
+      let input$3 = _block$1;
+      let $3 = !is_char(input$3.char);
+      if ($3) {
+        return error(input$3, new MalformedCharStream());
+      } else {
+        let _block$2;
+        let $4 = input$3.cr && input$3.char === u_nl;
+        if (!$4) {
+          _block$2 = new Ok(input$3);
+        } else {
+          let $5 = input$3.uchar(input$3);
+          if (!$5.isOk()) {
+            let e = $5[0];
+            _block$2 = new Error2(e);
+          } else {
+            let char$1 = $5[0][0];
+            let input$42 = $5[0][1];
+            _block$2 = new Ok(
+              (() => {
+                let _record$1 = input$42;
+                return new Input(
+                  _record$1.encoding,
+                  _record$1.strip,
+                  _record$1.namespace_callback,
+                  _record$1.entity_callback,
+                  _record$1.uchar,
+                  _record$1.stream,
+                  char$1,
+                  _record$1.cr,
+                  _record$1.line,
+                  _record$1.column,
+                  _record$1.limit,
+                  _record$1.peek,
+                  _record$1.stripping,
+                  _record$1.last_whitespace,
+                  _record$1.scopes,
+                  _record$1.ns,
+                  _record$1.identifier,
+                  _record$1.data
+                );
+              })()
+            );
+          }
+        }
+        let input$4 = _block$2;
+        if (!input$4.isOk()) {
+          let e = input$4[0];
+          return new Error2(e);
+        } else {
+          let input$5 = input$4[0];
+          let _block$3;
+          let $5 = input$5.char === u_cr;
+          if ($5) {
+            let _record$1 = input$5;
+            _block$3 = new Input(
+              _record$1.encoding,
+              _record$1.strip,
+              _record$1.namespace_callback,
+              _record$1.entity_callback,
+              _record$1.uchar,
+              _record$1.stream,
+              u_nl,
+              true,
+              _record$1.line,
+              _record$1.column,
+              _record$1.limit,
+              _record$1.peek,
+              _record$1.stripping,
+              _record$1.last_whitespace,
+              _record$1.scopes,
+              _record$1.ns,
+              _record$1.identifier,
+              _record$1.data
+            );
+          } else {
+            let _record$1 = input$5;
+            _block$3 = new Input(
+              _record$1.encoding,
+              _record$1.strip,
+              _record$1.namespace_callback,
+              _record$1.entity_callback,
+              _record$1.uchar,
+              _record$1.stream,
+              _record$1.char,
+              false,
+              _record$1.line,
+              _record$1.column,
+              _record$1.limit,
+              _record$1.peek,
+              _record$1.stripping,
+              _record$1.last_whitespace,
+              _record$1.scopes,
+              _record$1.ns,
+              _record$1.identifier,
+              _record$1.data
+            );
+          }
+          let input$6 = _block$3;
+          return new Ok(input$6);
+        }
+      }
+    }
+  }
+}
+function next_char_eof(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk() && $[0] instanceof InputError && $[0][1] instanceof UnicodeLexerErrorEoi) {
+    return new Ok(
+      (() => {
+        let _record = input2;
+        return new Input(
+          _record.encoding,
+          _record.strip,
+          _record.namespace_callback,
+          _record.entity_callback,
+          _record.uchar,
+          _record.stream,
+          u_eoi,
+          _record.cr,
+          _record.line,
+          _record.column,
+          _record.limit,
+          _record.peek,
+          _record.stripping,
+          _record.last_whitespace,
+          _record.scopes,
+          _record.ns,
+          _record.identifier,
+          _record.data
+        );
+      })()
+    );
+  } else if (!$.isOk()) {
+    let e = $;
+    return e;
+  } else {
+    let input$1 = $[0];
+    return new Ok(input$1);
+  }
+}
+function skip_whitespace(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = !is_whitespace(input2.char);
+    if ($) {
+      return new Ok(input2);
+    } else {
+      let $1 = next_char(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        loop$input = input$1;
+      }
+    }
+  }
+}
+function skip_whitespace_eof(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = is_whitespace(input2.char);
+    if ($) {
+      let $1 = next_char_eof(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        loop$input = input$1;
+      }
+    } else {
+      return new Ok(input2);
+    }
+  }
+}
+function accept(input2, char) {
+  let $ = input2.char === char;
+  if ($) {
+    return next_char(input2);
+  } else {
+    return error_expected_chars(input2, toList([char]));
+  }
+}
+function parse_ncname__loop(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = is_name_char(input2.char);
+    if (!$) {
+      return new Ok(input2);
+    } else {
+      let input$1 = add_char_to_identifier(input2, input2.char);
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        loop$input = input$2;
+      }
+    }
+  }
+}
+function parse_ncname(input2) {
+  let input$1 = clear_identifier(input2);
+  let $ = !is_name_start_char(input$1.char);
+  if ($) {
+    return error_illegal_char(input$1, input$1.char);
+  } else {
+    let input$2 = add_char_to_identifier(input$1, input$1.char);
+    let $1 = next_char(input$2);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let input$3 = $1[0];
+      let $2 = parse_ncname__loop(input$3);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let input$4 = $2[0];
+        let name = input_identifier_to_string(input$4);
+        return new Ok([name, input$4]);
+      }
+    }
+  }
+}
+function eat_cdata_lbrack(input2) {
+  let input$1 = add_char_to_identifier(input2, input2.char);
+  return try$(
+    next_char(input$1),
+    (input3) => {
+      let input$12 = add_char_to_identifier(input3, input3.char);
+      return try$(
+        next_char(input$12),
+        (input4) => {
+          let input$13 = add_char_to_identifier(input4, input4.char);
+          return try$(
+            next_char(input$13),
+            (input5) => {
+              let input$14 = add_char_to_identifier(input5, input5.char);
+              return try$(
+                next_char(input$14),
+                (input6) => {
+                  let input$15 = add_char_to_identifier(input6, input6.char);
+                  return try$(
+                    next_char(input$15),
+                    (input7) => {
+                      let input$16 = add_char_to_identifier(input7, input7.char);
+                      return next_char(input$16);
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+}
+function parse_dtd_signal__loop__loop(loop$input, loop$quot_or_apos) {
+  while (true) {
+    let input2 = loop$input;
+    let quot_or_apos = loop$quot_or_apos;
+    let $ = input2.char === quot_or_apos;
+    if ($) {
+      return new Ok(input2);
+    } else {
+      let input$1 = add_char_to_data(input2, input2.char);
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        loop$input = input$2;
+        loop$quot_or_apos = quot_or_apos;
+      }
+    }
+  }
+}
+var u_space = 32;
+function add_char_to_data_strip(input2, char) {
+  let $ = is_whitespace(char);
+  if ($) {
+    let _record = input2;
+    return new Input(
+      _record.encoding,
+      _record.strip,
+      _record.namespace_callback,
+      _record.entity_callback,
+      _record.uchar,
+      _record.stream,
+      _record.char,
+      _record.cr,
+      _record.line,
+      _record.column,
+      _record.limit,
+      _record.peek,
+      _record.stripping,
+      true,
+      _record.scopes,
+      _record.ns,
+      _record.identifier,
+      _record.data
+    );
+  } else {
+    let _block;
+    let $1 = input2.last_whitespace;
+    let $2 = input2.data;
+    if ($2.hasLength(0)) {
+      _block = input2;
+    } else if (!$1) {
+      _block = input2;
+    } else {
+      _block = add_char_to_data(input2, u_space);
+    }
+    let input$1 = _block;
+    let _block$1;
+    let _record = input$1;
+    _block$1 = new Input(
+      _record.encoding,
+      _record.strip,
+      _record.namespace_callback,
+      _record.entity_callback,
+      _record.uchar,
+      _record.stream,
+      _record.char,
+      _record.cr,
+      _record.line,
+      _record.column,
+      _record.limit,
+      _record.peek,
+      _record.stripping,
+      false,
+      _record.scopes,
+      _record.ns,
+      _record.identifier,
+      _record.data
+    );
+    let input$2 = _block$1;
+    return add_char_to_data(input$2, char);
+  }
+}
+var u_quot = 34;
+var u_sharp = 35;
+var u_amp = 38;
+var u_apos = 39;
+var u_minus = 45;
+function parse_limit__comment(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    let $1 = accept(input$1, u_minus);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let input$2 = $1[0];
+      return new Ok([new LimitComment(), input$2]);
+    }
+  }
+}
+function skip_comment__loop(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = input2.char !== u_minus;
+    if ($) {
+      let $1 = next_char(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        loop$input = input$1;
+      }
+    } else {
+      return new Ok(input2);
+    }
+  }
+}
+var u_slash = 47;
+var u_colon = 58;
+function parse_qname(input2) {
+  let $ = parse_ncname(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let name = $[0][0];
+    let input$1 = $[0][1];
+    let $1 = input$1.char !== u_colon;
+    if ($1) {
+      return new Ok([new Name("", name), input$1]);
+    } else {
+      let $2 = next_char(input$1);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $2[0];
+        let $3 = parse_ncname(input$2);
+        if (!$3.isOk()) {
+          let e = $3[0];
+          return new Error2(e);
+        } else {
+          let local_name = $3[0][0];
+          let input$3 = $3[0][1];
+          return new Ok([new Name(name, local_name), input$3]);
+        }
+      }
+    }
+  }
+}
+function parse_limit__pi(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    let $1 = parse_qname(input$1);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let name = $1[0][0];
+      let input$2 = $1[0][1];
+      return new Ok([new LimitPi(name), input$2]);
+    }
+  }
+}
+function parse_limit__end_tag(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    let $1 = parse_qname(input$1);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let name = $1[0][0];
+      let input$2 = $1[0][1];
+      let $2 = skip_whitespace(input$2);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let input$3 = $2[0];
+        return new Ok([new LimitEndTag(name), input$3]);
+      }
+    }
+  }
+}
+function parse_limit__start_tag(input2) {
+  let $ = parse_qname(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let name = $[0][0];
+    let input$1 = $[0][1];
+    return new Ok([new LimitStartTag(name), input$1]);
+  }
+}
+var u_scolon = 59;
+function parse_char_reference__loop2(loop$input, loop$c) {
+  while (true) {
+    let input2 = loop$input;
+    let c = loop$c;
+    let $ = input2.char === u_scolon;
+    if ($) {
+      return new Ok(new LoopDoneByCondition([c, input2]));
+    } else {
+      let input$1 = add_char_to_identifier(input2, input2.char);
+      let $1 = !is_digit(input$1.char);
+      if ($1) {
+        return new Ok(new LoopDoneExited([c, input$1]));
+      } else {
+        let c$1 = c * 10 + (input$1.char - 48);
+        let $2 = next_char(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$c = c$1;
+        }
+      }
+    }
+  }
+}
+function parse_char_reference__loop3(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = input2.char === u_scolon;
+    if ($) {
+      return new Ok(input2);
+    } else {
+      let input$1 = add_char_to_identifier(input2, input2.char);
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        loop$input = input$2;
+      }
+    }
+  }
+}
+function parse_entity_reference(input2, predefined_entities2) {
+  let $ = parse_ncname(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let entity = $[0][0];
+    let input$1 = $[0][1];
+    let $1 = accept(input$1, u_scolon);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let input$2 = $1[0];
+      let $2 = map_get(predefined_entities2, entity);
+      if ($2.isOk()) {
+        let replacement = $2[0];
+        return new Ok([replacement, input$2]);
+      } else {
+        let $3 = input$2.entity_callback(entity);
+        if ($3 instanceof Some) {
+          let replacement = $3[0];
+          return new Ok([replacement, input$2]);
+        } else {
+          return error(input$2, new UnknownEntityRef(entity));
+        }
+      }
+    }
+  }
+}
+var u_lt = 60;
+var u_eq = 61;
+var u_gt = 62;
+function skip_comment(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = skip_comment__loop(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(e);
+    } else {
+      let input$1 = $[0];
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        let $2 = input$2.char !== u_minus;
+        if ($2) {
+          loop$input = input$2;
+        } else {
+          let $3 = next_char(input$2);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            return new Error2(e);
+          } else {
+            let input$3 = $3[0];
+            let $4 = input$3.char !== u_gt;
+            if ($4) {
+              return error_expected_chars(input$3, toList([u_gt]));
+            } else {
+              return next_char_eof(input$3);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+function next_char_then_skip_comment(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    return skip_comment(input$1);
+  }
+}
+var u_qmark = 63;
+function skip_pi__loop(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = input2.char !== u_qmark;
+    if ($) {
+      let $1 = next_char(input2);
+      if ($1.isOk()) {
+        let input$1 = $1[0];
+        loop$input = input$1;
+      } else {
+        let e = $1;
+        return e;
+      }
+    } else {
+      return new Ok(input2);
+    }
+  }
+}
+function skip_pi(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = skip_pi__loop(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(e);
+    } else {
+      let input$1 = $[0];
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        let $2 = input$2.char !== u_gt;
+        if ($2) {
+          loop$input = input$2;
+        } else {
+          return next_char_eof(input$2);
+        }
+      }
+    }
+  }
+}
+var u_emark = 33;
+function parse_dtd_signal__loop(loop$input, loop$nest) {
+  while (true) {
+    let input2 = loop$input;
+    let nest = loop$nest;
+    let $ = nest <= 0;
+    if ($) {
+      return new Ok(input2);
+    } else {
+      let $1 = input2.char === u_lt;
+      if ($1) {
+        let $2 = next_char(input2);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$1 = $2[0];
+          let $3 = input$1.char !== u_emark;
+          if ($3) {
+            let input$2 = add_char_to_data(input$1, u_lt);
+            loop$input = input$2;
+            loop$nest = nest + 1;
+          } else {
+            let $4 = next_char(input$1);
+            if (!$4.isOk()) {
+              let e = $4[0];
+              return new Error2(e);
+            } else {
+              let input$2 = $4[0];
+              let $5 = input$2.char !== u_minus;
+              if ($5) {
+                let input$3 = add_char_to_data(input$2, u_lt);
+                let input$4 = add_char_to_data(input$3, u_emark);
+                loop$input = input$4;
+                loop$nest = nest + 1;
+              } else {
+                let $6 = next_char(input$2);
+                if (!$6.isOk()) {
+                  let e = $6[0];
+                  return new Error2(e);
+                } else {
+                  let input$3 = $6[0];
+                  let $7 = input$3.char !== u_minus;
+                  if ($7) {
+                    let input$4 = add_char_to_data(input$3, u_lt);
+                    let input$5 = add_char_to_data(input$4, u_emark);
+                    let input$6 = add_char_to_data(input$5, u_minus);
+                    loop$input = input$6;
+                    loop$nest = nest + 1;
+                  } else {
+                    let $8 = next_char_then_skip_comment(input$3);
+                    if (!$8.isOk()) {
+                      let e = $8[0];
+                      return new Error2(e);
+                    } else {
+                      let input$4 = $8[0];
+                      loop$input = input$4;
+                      loop$nest = nest;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else {
+        let $2 = input2.char === u_quot || input2.char === u_apos;
+        if ($2) {
+          let quot_or_apos = input2.char;
+          let input$1 = add_char_to_data(input2, quot_or_apos);
+          let $3 = next_char(input$1);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            return new Error2(e);
+          } else {
+            let input$2 = $3[0];
+            let $4 = parse_dtd_signal__loop__loop(input$2, quot_or_apos);
+            if (!$4.isOk()) {
+              let e = $4[0];
+              return new Error2(e);
+            } else {
+              let input$3 = $4[0];
+              let input$4 = add_char_to_data(input$3, quot_or_apos);
+              let $5 = next_char(input$4);
+              if (!$5.isOk()) {
+                let e = $5[0];
+                return new Error2(e);
+              } else {
+                let input$5 = $5[0];
+                loop$input = input$5;
+                loop$nest = nest;
+              }
+            }
+          }
+        } else {
+          let _block;
+          let $3 = input2.char === u_gt;
+          if ($3) {
+            _block = nest - 1;
+          } else {
+            _block = nest;
+          }
+          let nest$1 = _block;
+          let input$1 = add_char_to_data(input2, input2.char);
+          let $4 = next_char(input$1);
+          if (!$4.isOk()) {
+            let e = $4[0];
+            return new Error2(e);
+          } else {
+            let input$2 = $4[0];
+            loop$input = input$2;
+            loop$nest = nest$1;
+          }
+        }
+      }
+    }
+  }
+}
+var u_rbrack = 93;
+function parse_chardata__loop(loop$input, loop$add_char) {
+  while (true) {
+    let input2 = loop$input;
+    let add_char = loop$add_char;
+    let $ = input2.char === u_rbrack;
+    if (!$) {
+      return new Ok(input2);
+    } else {
+      let input$1 = add_char(input2, input2.char);
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        loop$input = input$2;
+        loop$add_char = add_char;
+      }
+    }
+  }
+}
+function parse_chardata__handle_rbrack(input2, add_char) {
+  let input$1 = add_char(input2, input2.char);
+  let $ = next_char(input$1);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$2 = $[0];
+    let $1 = input$2.char !== u_rbrack;
+    if ($1) {
+      return new Ok(input$2);
+    } else {
+      let input$3 = add_char(input$2, input$2.char);
+      let $2 = next_char(input$3);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let input$4 = $2[0];
+        let $3 = parse_chardata__loop(input$4, add_char);
+        if (!$3.isOk()) {
+          let e = $3[0];
+          return new Error2(e);
+        } else {
+          let input$5 = $3[0];
+          let $4 = input$5.char === u_gt;
+          if ($4) {
+            return error(input$5, new IllegalCharSeq("]]>"));
+          } else {
+            return new Ok(input$5);
+          }
+        }
+      }
+    }
+  }
+}
+function parse_cdata__loop__eat_rbrackets(loop$input, loop$add_char) {
+  while (true) {
+    let input2 = loop$input;
+    let add_char = loop$add_char;
+    let $ = input2.char !== u_rbrack;
+    if ($) {
+      return new Ok([input2, new Go()]);
+    } else {
+      let $1 = next_char(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        let $2 = input$1.char === u_gt;
+        if ($2) {
+          let $3 = next_char(input$1);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            return new Error2(e);
+          } else {
+            let input$2 = $3[0];
+            return new Ok([input$2, new Stop()]);
+          }
+        } else {
+          let input$2 = add_char(input$1, u_rbrack);
+          loop$input = input$2;
+          loop$add_char = add_char;
+        }
+      }
+    }
+  }
+}
+function parse_cdata__loop(loop$input, loop$add_char, loop$stop_or_go) {
+  while (true) {
+    let input2 = loop$input;
+    let add_char = loop$add_char;
+    let stop_or_go = loop$stop_or_go;
+    let $ = isEqual(stop_or_go, new Stop());
+    if ($) {
+      return new Ok(input2);
+    } else {
+      let $1 = input2.char !== u_rbrack;
+      if ($1) {
+        let input$1 = add_char(input2, input2.char);
+        let $2 = next_char(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$add_char = add_char;
+          loop$stop_or_go = stop_or_go;
+        }
+      } else {
+        let $2 = next_char(input2);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$1 = $2[0];
+          let $3 = parse_cdata__loop__eat_rbrackets(input$1, add_char);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            return new Error2(e);
+          } else {
+            let input$2 = $3[0][0];
+            let go = $3[0][1];
+            let $4 = isEqual(go, new Stop());
+            if ($4) {
+              return new Ok(input$2);
+            } else {
+              let input$3 = add_char(input$2, u_rbrack);
+              loop$input = input$3;
+              loop$add_char = add_char;
+              loop$stop_or_go = new Go();
+            }
+          }
+        }
+      }
+    }
+  }
+}
+function parse_cdata(input2, add_char) {
+  return parse_cdata__loop(input2, add_char, new Go());
+}
+var u_x = 120;
+var u_bom = 65279;
+function find_encoding(input2) {
+  let reset = (input3, uchar) => {
+    let _block;
+    let _record = input3;
+    _block = new Input(
+      _record.encoding,
+      _record.strip,
+      _record.namespace_callback,
+      _record.entity_callback,
+      uchar,
+      _record.stream,
+      _record.char,
+      _record.cr,
+      _record.line,
+      0,
+      _record.limit,
+      _record.peek,
+      _record.stripping,
+      _record.last_whitespace,
+      _record.scopes,
+      _record.ns,
+      _record.identifier,
+      _record.data
+    );
+    let input$1 = _block;
+    return next_char(input$1);
+  };
+  let $ = input2.encoding;
+  if ($ instanceof None) {
+    return try$(
+      next_char(input2),
+      (input3) => {
+        let $1 = input3.char;
+        if ($1 === 254) {
+          return try$(
+            next_char(input3),
+            (input4) => {
+              return lazy_guard(
+                input4.char !== 255,
+                () => {
+                  return error(input4, new MalformedCharStream());
+                },
+                () => {
+                  return try$(
+                    reset(input4, input_uchar_utf16be()),
+                    (input5) => {
+                      return new Ok([true, input5]);
+                    }
+                  );
+                }
+              );
+            }
+          );
+        } else if ($1 === 255) {
+          return try$(
+            next_char(input3),
+            (input4) => {
+              return lazy_guard(
+                input4.char !== 254,
+                () => {
+                  return error(input4, new MalformedCharStream());
+                },
+                () => {
+                  return try$(
+                    reset(input4, input_uchar_utf16le()),
+                    (input5) => {
+                      return new Ok([true, input5]);
+                    }
+                  );
+                }
+              );
+            }
+          );
+        } else if ($1 === 239) {
+          return try$(
+            next_char(input3),
+            (input4) => {
+              return lazy_guard(
+                input4.char !== 187,
+                () => {
+                  return error(input4, new MalformedCharStream());
+                },
+                () => {
+                  return try$(
+                    next_char(input4),
+                    (input5) => {
+                      return lazy_guard(
+                        input5.char !== 191,
+                        () => {
+                          return error(input5, new MalformedCharStream());
+                        },
+                        () => {
+                          return try$(
+                            reset(input5, input_uchar_utf8()),
+                            (input6) => {
+                              return new Ok([true, input6]);
+                            }
+                          );
+                        }
+                      );
+                    }
+                  );
+                }
+              );
+            }
+          );
+        } else if ($1 === 60) {
+          return new Ok(
+            [
+              false,
+              (() => {
+                let _record = input3;
+                return new Input(
+                  _record.encoding,
+                  _record.strip,
+                  _record.namespace_callback,
+                  _record.entity_callback,
+                  input_uchar_utf8(),
+                  _record.stream,
+                  _record.char,
+                  _record.cr,
+                  _record.line,
+                  _record.column,
+                  _record.limit,
+                  _record.peek,
+                  _record.stripping,
+                  _record.last_whitespace,
+                  _record.scopes,
+                  _record.ns,
+                  _record.identifier,
+                  _record.data
+                );
+              })()
+            ]
+          );
+        } else {
+          return new Ok(
+            [
+              false,
+              (() => {
+                let _record = input3;
+                return new Input(
+                  _record.encoding,
+                  _record.strip,
+                  _record.namespace_callback,
+                  _record.entity_callback,
+                  input_uchar_utf8(),
+                  _record.stream,
+                  _record.char,
+                  _record.cr,
+                  _record.line,
+                  _record.column,
+                  _record.limit,
+                  _record.peek,
+                  _record.stripping,
+                  _record.last_whitespace,
+                  _record.scopes,
+                  _record.ns,
+                  _record.identifier,
+                  _record.data
+                );
+              })()
+            ]
+          );
+        }
+      }
+    );
+  } else {
+    let encoding = $[0];
+    return try$(
+      (() => {
+        if (encoding instanceof UsAscii) {
+          return reset(input2, input_uchar_ascii());
+        } else if (encoding instanceof Iso8859x1) {
+          return reset(input2, input_uchar_iso_8859_1());
+        } else if (encoding instanceof Iso8859x15) {
+          return reset(input2, input_uchar_iso_8859_15());
+        } else if (encoding instanceof Utf8) {
+          return try$(
+            reset(input2, input_uchar_utf8()),
+            (input3) => {
+              return lazy_guard(
+                input3.char === u_bom,
+                () => {
+                  let _block;
+                  let _record = input3;
+                  _block = new Input(
+                    _record.encoding,
+                    _record.strip,
+                    _record.namespace_callback,
+                    _record.entity_callback,
+                    _record.uchar,
+                    _record.stream,
+                    _record.char,
+                    _record.cr,
+                    _record.line,
+                    0,
+                    _record.limit,
+                    _record.peek,
+                    _record.stripping,
+                    _record.last_whitespace,
+                    _record.scopes,
+                    _record.ns,
+                    _record.identifier,
+                    _record.data
+                  );
+                  let input$1 = _block;
+                  return try$(
+                    next_char(input$1),
+                    (input4) => {
+                      return new Ok(input4);
+                    }
+                  );
+                },
+                () => {
+                  return new Ok(input3);
+                }
+              );
+            }
+          );
+        } else if (encoding instanceof Utf16) {
+          return try$(
+            next_char(input2),
+            (input3) => {
+              let byte0 = input3.char;
+              return try$(
+                next_char(input3),
+                (input4) => {
+                  let byte1 = input4.char;
+                  if (byte0 === 254 && byte1 === 255) {
+                    return reset(input4, input_uchar_utf16be());
+                  } else if (byte0 === 255 && byte1 === 254) {
+                    return reset(input4, input_uchar_utf16le());
+                  } else {
+                    return error(input4, new MalformedCharStream());
+                  }
+                }
+              );
+            }
+          );
+        } else if (encoding instanceof Utf16Be) {
+          return try$(
+            reset(input2, input_uchar_utf16be()),
+            (input3) => {
+              return lazy_guard(
+                input3.char === u_bom,
+                () => {
+                  let _block;
+                  let _record = input3;
+                  _block = new Input(
+                    _record.encoding,
+                    _record.strip,
+                    _record.namespace_callback,
+                    _record.entity_callback,
+                    _record.uchar,
+                    _record.stream,
+                    _record.char,
+                    _record.cr,
+                    _record.line,
+                    0,
+                    _record.limit,
+                    _record.peek,
+                    _record.stripping,
+                    _record.last_whitespace,
+                    _record.scopes,
+                    _record.ns,
+                    _record.identifier,
+                    _record.data
+                  );
+                  let input$1 = _block;
+                  return try$(
+                    next_char(input$1),
+                    (input4) => {
+                      return new Ok(input4);
+                    }
+                  );
+                },
+                () => {
+                  return new Ok(input3);
+                }
+              );
+            }
+          );
+        } else {
+          return try$(
+            reset(input2, input_uchar_utf16le()),
+            (input3) => {
+              return lazy_guard(
+                input3.char === u_bom,
+                () => {
+                  let _block;
+                  let _record = input3;
+                  _block = new Input(
+                    _record.encoding,
+                    _record.strip,
+                    _record.namespace_callback,
+                    _record.entity_callback,
+                    _record.uchar,
+                    _record.stream,
+                    _record.char,
+                    _record.cr,
+                    _record.line,
+                    0,
+                    _record.limit,
+                    _record.peek,
+                    _record.stripping,
+                    _record.last_whitespace,
+                    _record.scopes,
+                    _record.ns,
+                    _record.identifier,
+                    _record.data
+                  );
+                  let input$1 = _block;
+                  return try$(
+                    next_char(input$1),
+                    (input4) => {
+                      return new Ok(input4);
+                    }
+                  );
+                },
+                () => {
+                  return new Ok(input3);
+                }
+              );
+            }
+          );
+        }
+      })(),
+      (input3) => {
+        return new Ok([true, input3]);
+      }
+    );
+  }
+}
+var u_9 = 57;
+var u_cap_f = 70;
+function parse_char_reference__loop1(loop$input, loop$c) {
+  while (true) {
+    let input2 = loop$input;
+    let c = loop$c;
+    let $ = input2.char === u_scolon;
+    if ($) {
+      return new Ok(new LoopDoneByCondition([c, input2]));
+    } else {
+      let input$1 = add_char_to_identifier(input2, input2.char);
+      let $1 = !is_hex_digit(input$1.char);
+      if ($1) {
+        return new Ok(new LoopDoneExited([c, input$1]));
+      } else {
+        let c$1 = c * 16 + (() => {
+          let $22 = input$1.char <= u_9;
+          if ($22) {
+            return input$1.char - 48;
+          } else {
+            let $3 = input$1.char <= u_cap_f;
+            if ($3) {
+              return input$1.char - 55;
+            } else {
+              return input$1.char - 87;
+            }
+          }
+        })();
+        let $2 = next_char(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$c = c$1;
+        }
+      }
+    }
+  }
+}
+function parse_char_reference(input2) {
+  let input$1 = clear_identifier(input2);
+  let $ = next_char(input$1);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$2 = $[0];
+    let $1 = input$2.char === u_scolon;
+    if ($1) {
+      return error(input$2, new IllegalCharRef(""));
+    } else {
+      let _block;
+      let $2 = input$2.char === u_x;
+      if (!$2) {
+        _block = parse_char_reference__loop2(input$2, 0);
+      } else {
+        let input$3 = add_char_to_identifier(input$2, input$2.char);
+        let $3 = next_char(input$3);
+        if (!$3.isOk()) {
+          let e = $3[0];
+          _block = new Error2(e);
+        } else {
+          let input$4 = $3[0];
+          _block = parse_char_reference__loop1(input$4, 0);
+        }
+      }
+      let result = _block;
+      if (!result.isOk()) {
+        let e = result[0];
+        return new Error2(e);
+      } else {
+        let intermediate_result = result[0];
+        let _block$1;
+        if (intermediate_result instanceof LoopDoneByCondition) {
+          let c = intermediate_result[0][0];
+          let input$3 = intermediate_result[0][1];
+          _block$1 = new Ok([c, input$3]);
+        } else {
+          let input$3 = intermediate_result[0][1];
+          let $3 = parse_char_reference__loop3(input$3);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            _block$1 = new Error2(e);
+          } else {
+            let input$4 = $3[0];
+            _block$1 = new Ok([-1, input$4]);
+          }
+        }
+        let tup = _block$1;
+        if (!tup.isOk()) {
+          let e = tup[0];
+          return new Error2(e);
+        } else {
+          let c = tup[0][0];
+          let input$3 = tup[0][1];
+          let $3 = next_char(input$3);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            return new Error2(e);
+          } else {
+            let input$4 = $3[0];
+            let $4 = is_char(c);
+            if ($4) {
+              let input$5 = clear_identifier(input$4);
+              let input$6 = add_char_to_identifier(input$5, c);
+              return new Ok([buffer_to_string(input$6.identifier), input$6]);
+            } else {
+              return error(
+                input$4,
+                new IllegalCharRef(buffer_to_string(input$4.identifier))
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+}
+function parse_reference(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    let $1 = input$1.char === u_sharp;
+    if ($1) {
+      return parse_char_reference(input$1);
+    } else {
+      return parse_entity_reference(input$1, predefined_entities());
+    }
+  }
+}
+function parse_attribute_value__loop(loop$input, loop$delim) {
+  while (true) {
+    let input2 = loop$input;
+    let delim = loop$delim;
+    let $ = input2.char;
+    if ($ === delim) {
+      let char = $;
+      return new Ok(input2);
+    } else if ($ === 60) {
+      let char = $;
+      return error_illegal_char(input2, u_lt);
+    } else if ($ === 38) {
+      let char = $;
+      let $1 = parse_reference(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let reference = $1[0][0];
+        let input$1 = $1[0][1];
+        let _block;
+        let _pipe = to_utf_codepoints(reference);
+        _block = fold(
+          _pipe,
+          input$1,
+          (input3, char2) => {
+            return add_char_to_data_strip(
+              input3,
+              utf_codepoint_to_int(char2)
+            );
+          }
+        );
+        let input$2 = _block;
+        loop$input = input$2;
+        loop$delim = delim;
+      }
+    } else {
+      let input$1 = add_char_to_data_strip(input2, input2.char);
+      let $1 = next_char(input$1);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$2 = $1[0];
+        loop$input = input$2;
+        loop$delim = delim;
+      }
+    }
+  }
+}
+function parse_attribute_value(input2) {
+  return try$(
+    skip_whitespace(input2),
+    (input3) => {
+      return lazy_guard(
+        !(input3.char === u_quot || input3.char === u_apos),
+        () => {
+          return error_expected_chars(input3, toList([u_quot, u_apos]));
+        },
+        () => {
+          let delim = input3.char;
+          return try$(
+            next_char(input3),
+            (input4) => {
+              return try$(
+                skip_whitespace(input4),
+                (input5) => {
+                  let input$1 = clear_data(input5);
+                  let _block;
+                  let _record = input$1;
+                  _block = new Input(
+                    _record.encoding,
+                    _record.strip,
+                    _record.namespace_callback,
+                    _record.entity_callback,
+                    _record.uchar,
+                    _record.stream,
+                    _record.char,
+                    _record.cr,
+                    _record.line,
+                    _record.column,
+                    _record.limit,
+                    _record.peek,
+                    _record.stripping,
+                    true,
+                    _record.scopes,
+                    _record.ns,
+                    _record.identifier,
+                    _record.data
+                  );
+                  let input$2 = _block;
+                  return try$(
+                    parse_attribute_value__loop(input$2, delim),
+                    (input6) => {
+                      return try$(
+                        next_char(input6),
+                        (input7) => {
+                          let data = input_data_to_string(input7);
+                          return new Ok([data, input7]);
+                        }
+                      );
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+}
+var s_cdata = "CDATA[";
+function parse_limit__cdata(input2) {
+  let $ = next_char(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    let input$2 = clear_identifier(input$1);
+    let $1 = eat_cdata_lbrack(input$2);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let input$3 = $1[0];
+      let cdata = input_identifier_to_string(input$3);
+      let $2 = cdata === s_cdata;
+      if ($2) {
+        return new Ok([new LimitCData(), input$3]);
+      } else {
+        return error_expected_seqs(input$3, toList([s_cdata]), cdata);
+      }
+    }
+  }
+}
+function parse_limit(input2) {
+  let _block;
+  let $ = input2.char === u_eoi;
+  if ($) {
+    _block = new Ok([new LimitEoi(), input2]);
+  } else {
+    let $1 = input2.char !== u_lt;
+    if ($1) {
+      _block = new Ok([new LimitText(), input2]);
+    } else {
+      let $2 = next_char(input2);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        _block = new Error2(e);
+      } else {
+        let input$1 = $2[0];
+        let $3 = input$1.char;
+        if ($3 === 63) {
+          let char = $3;
+          _block = parse_limit__pi(input$1);
+        } else if ($3 === 47) {
+          let char = $3;
+          _block = parse_limit__end_tag(input$1);
+        } else if ($3 === 33) {
+          let char = $3;
+          let $4 = next_char(input$1);
+          if (!$4.isOk()) {
+            let e = $4[0];
+            _block = new Error2(e);
+          } else {
+            let input$2 = $4[0];
+            let _block$1;
+            let $6 = input$2.char;
+            if ($6 === 45) {
+              let char$1 = $6;
+              _block$1 = parse_limit__comment(input$2);
+            } else if ($6 === 68) {
+              let char$1 = $6;
+              _block$1 = new Ok([new LimitDtd(), input$2]);
+            } else if ($6 === 91) {
+              let char$1 = $6;
+              _block$1 = parse_limit__cdata(input$2);
+            } else {
+              _block$1 = error(
+                input$2,
+                new IllegalCharSeq("<!" + string_from_char(input$2.char))
+              );
+            }
+            let $5 = _block$1;
+            _block = $5;
+          }
+        } else {
+          _block = parse_limit__start_tag(input$1);
+        }
+      }
+    }
+  }
+  let result = _block;
+  if (!result.isOk()) {
+    let e = result[0];
+    return new Error2(e);
+  } else {
+    let limit = result[0][0];
+    let input$1 = result[0][1];
+    return new Ok(
+      (() => {
+        let _record = input$1;
+        return new Input(
+          _record.encoding,
+          _record.strip,
+          _record.namespace_callback,
+          _record.entity_callback,
+          _record.uchar,
+          _record.stream,
+          _record.char,
+          _record.cr,
+          _record.line,
+          _record.column,
+          limit,
+          _record.peek,
+          _record.stripping,
+          _record.last_whitespace,
+          _record.scopes,
+          _record.ns,
+          _record.identifier,
+          _record.data
+        );
+      })()
+    );
+  }
+}
+function parse_element_end_signal(input2, name) {
+  let $ = input2.scopes;
+  if ($.atLeastLength(1)) {
+    let name_ = $.head[0];
+    let prefixes = $.head[1];
+    let strip = $.head[2];
+    let scopes = $.tail;
+    let $1 = input2.char !== u_gt;
+    if ($1) {
+      return error_expected_chars(input2, toList([u_gt]));
+    } else {
+      let $2 = !isEqual(name, name_);
+      if ($2) {
+        return error_expected_seqs(
+          input2,
+          toList([name_to_string(name_)]),
+          name_to_string(name)
+        );
+      } else {
+        let _block;
+        let _record = input2;
+        _block = new Input(
+          _record.encoding,
+          _record.strip,
+          _record.namespace_callback,
+          _record.entity_callback,
+          _record.uchar,
+          _record.stream,
+          _record.char,
+          _record.cr,
+          _record.line,
+          _record.column,
+          _record.limit,
+          _record.peek,
+          strip,
+          _record.last_whitespace,
+          scopes,
+          fold(
+            prefixes,
+            input2.ns,
+            (dict2, prefix) => {
+              return delete$(dict2, prefix);
+            }
+          ),
+          _record.identifier,
+          _record.data
+        );
+        let input$1 = _block;
+        let _block$1;
+        if (scopes.hasLength(0)) {
+          _block$1 = new Ok(
+            (() => {
+              let _record$1 = input$1;
+              return new Input(
+                _record$1.encoding,
+                _record$1.strip,
+                _record$1.namespace_callback,
+                _record$1.entity_callback,
+                _record$1.uchar,
+                _record$1.stream,
+                u_end_doc,
+                _record$1.cr,
+                _record$1.line,
+                _record$1.column,
+                _record$1.limit,
+                _record$1.peek,
+                _record$1.stripping,
+                _record$1.last_whitespace,
+                _record$1.scopes,
+                _record$1.ns,
+                _record$1.identifier,
+                _record$1.data
+              );
+            })()
+          );
+        } else {
+          let $3 = next_char(input$1);
+          if (!$3.isOk()) {
+            let e = $3[0];
+            _block$1 = new Error2(e);
+          } else {
+            let input$22 = $3[0];
+            _block$1 = parse_limit(input$22);
+          }
+        }
+        let input$2 = _block$1;
+        if (!input$2.isOk()) {
+          let e = input$2[0];
+          return new Error2(e);
+        } else {
+          let input$3 = input$2[0];
+          return new Ok([new ElementEnd(), input$3]);
+        }
+      }
+    }
+  } else {
+    throw makeError(
+      "panic",
+      "xmlm",
+      2513,
+      "parse_element_end_signal",
+      "impossible",
+      {}
+    );
+  }
+}
+function skip_pi_then_parse_limit(input2) {
+  let $ = skip_pi(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    return parse_limit(input$1);
+  }
+}
+function skip_comment_then_parse_limit(input2) {
+  let $ = skip_comment(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    return parse_limit(input$1);
+  }
+}
+function accept_then_parse_limit(input2, char) {
+  let $ = accept(input2, char);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    return parse_limit(input$1);
+  }
+}
+function skip_whitespace_eof_then_parse_limit(input2) {
+  let $ = skip_whitespace_eof(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    return parse_limit(input$1);
+  }
+}
+var ns_xml = "http://www.w3.org/XML/1998/namespace";
+var ns_xmlns = "http://www.w3.org/2000/xmlns/";
+var n_xml = "xml";
+function skip_misc(loop$input, loop$allow_xmlpi) {
+  while (true) {
+    let input2 = loop$input;
+    let allow_xmlpi = loop$allow_xmlpi;
+    let $ = input2.limit;
+    if ($ instanceof LimitPi && $[0] instanceof Name) {
+      let prefix = $[0].uri;
+      let local = $[0].local;
+      let $1 = is_empty(prefix) && n_xml === lowercase(local);
+      if ($1) {
+        if (allow_xmlpi) {
+          return new Ok(input2);
+        } else {
+          return error(input2, new IllegalCharSeq(local));
+        }
+      } else {
+        let $2 = skip_pi_then_parse_limit(input2);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$1 = $2[0];
+          loop$input = input$1;
+          loop$allow_xmlpi = allow_xmlpi;
+        }
+      }
+    } else if ($ instanceof LimitComment) {
+      let $1 = skip_comment_then_parse_limit(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        loop$input = input$1;
+        loop$allow_xmlpi = allow_xmlpi;
+      }
+    } else if ($ instanceof LimitText) {
+      let $1 = is_whitespace(input2.char);
+      if ($1) {
+        let $2 = skip_whitespace_eof_then_parse_limit(input2);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$1 = $2[0];
+          loop$input = input$1;
+          loop$allow_xmlpi = allow_xmlpi;
+        }
+      } else {
+        return new Ok(input2);
+      }
+    } else if ($ instanceof LimitCData) {
+      return new Ok(input2);
+    } else if ($ instanceof LimitDtd) {
+      return new Ok(input2);
+    } else if ($ instanceof LimitEndTag) {
+      return new Ok(input2);
+    } else if ($ instanceof LimitEoi) {
+      return new Ok(input2);
+    } else {
+      return new Ok(input2);
+    }
+  }
+}
+function parse_dtd_signal(input2) {
+  let $ = skip_misc(input2, false);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$1 = $[0];
+    let $1 = !isEqual(input$1.limit, new LimitDtd());
+    if ($1) {
+      return new Ok([new Dtd(new None()), input$1]);
+    } else {
+      let input$2 = clear_data(input$1);
+      let input$3 = add_char_to_data(input$2, u_lt);
+      let input$4 = add_char_to_data(input$3, u_emark);
+      let $2 = parse_dtd_signal__loop(input$4, 1);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let input$5 = $2[0];
+        let dtd = buffer_to_string(input$5.data);
+        let $3 = parse_limit(input$5);
+        if (!$3.isOk()) {
+          let e = $3[0];
+          return new Error2(e);
+        } else {
+          let input$6 = $3[0];
+          let $4 = skip_misc(input$6, false);
+          if (!$4.isOk()) {
+            let e = $4[0];
+            return new Error2(e);
+          } else {
+            let input$7 = $4[0];
+            return new Ok([new Dtd(new Some(dtd)), input$7]);
+          }
+        }
+      }
+    }
+  }
+}
+var n_xmlns = "xmlns";
+function from_bit_array(source) {
+  let _block;
+  let _pipe = new_map();
+  let _pipe$1 = insert(_pipe, "", "");
+  let _pipe$2 = insert(_pipe$1, n_xml, ns_xml);
+  _block = insert(_pipe$2, n_xmlns, ns_xmlns);
+  let bindings = _block;
+  return new Input(
+    new None(),
+    false,
+    (_) => {
+      return new None();
+    },
+    (_) => {
+      return new None();
+    },
+    input_uchar_byte(),
+    bit_array_to_list(source),
+    u_start_doc,
+    false,
+    1,
+    0,
+    new LimitText(),
+    signal_start_stream(),
+    false,
+    true,
+    toList([]),
+    bindings,
+    toList([]),
+    toList([])
+  );
+}
+function from_string(source) {
+  return from_bit_array(bit_array_from_string(source));
+}
+function expand_attribute(input2, attribute3) {
+  let $ = attribute3.name;
+  let prefix = $.uri;
+  let local = $.local;
+  if (prefix === "") {
+    let $1 = local === n_xmlns;
+    if ($1) {
+      return new Ok(
+        [
+          (() => {
+            let _record = attribute3;
+            return new Attribute2(new Name(ns_xmlns, n_xmlns), _record.value);
+          })(),
+          input2
+        ]
+      );
+    } else {
+      return new Ok([attribute3, input2]);
+    }
+  } else {
+    let $1 = expand_name(input2, attribute3.name);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let name = $1[0];
+      return new Ok(
+        [
+          (() => {
+            let _record = attribute3;
+            return new Attribute2(name, _record.value);
+          })(),
+          input2
+        ]
+      );
+    }
+  }
+}
+var n_space = "space";
+var n_version = "version";
+var n_encoding = "encoding";
+var n_standalone = "standalone";
+var v_yes = "yes";
+var v_no = "no";
+function maybe_update_stripping(input2, attribute_value, prefix, local) {
+  let $ = prefix === n_xml && local === n_space;
+  if ($) {
+    if (attribute_value === "preserve") {
+      let attr_val = attribute_value;
+      let _record = input2;
+      return new Input(
+        _record.encoding,
+        _record.strip,
+        _record.namespace_callback,
+        _record.entity_callback,
+        _record.uchar,
+        _record.stream,
+        _record.char,
+        _record.cr,
+        _record.line,
+        _record.column,
+        _record.limit,
+        _record.peek,
+        false,
+        _record.last_whitespace,
+        _record.scopes,
+        _record.ns,
+        _record.identifier,
+        _record.data
+      );
+    } else if (attribute_value === "default") {
+      let attr_val = attribute_value;
+      let _record = input2;
+      return new Input(
+        _record.encoding,
+        _record.strip,
+        _record.namespace_callback,
+        _record.entity_callback,
+        _record.uchar,
+        _record.stream,
+        _record.char,
+        _record.cr,
+        _record.line,
+        _record.column,
+        _record.limit,
+        _record.peek,
+        input2.strip,
+        _record.last_whitespace,
+        _record.scopes,
+        _record.ns,
+        _record.identifier,
+        _record.data
+      );
+    } else {
+      return input2;
+    }
+  } else {
+    return input2;
+  }
+}
+var v_version_1_0 = "1.0";
+var v_version_1_1 = "1.1";
+var v_utf_8 = "utf-8";
+var v_utf_16 = "utf-16";
+var v_utf_16be = "utf-16be";
+var v_utf_16le = "utf-16le";
+var v_iso_8859_1 = "iso-8859-1";
+var v_iso_8859_15 = "iso-8859-15";
+var v_us_ascii = "us-ascii";
+var v_ascii = "ascii";
+function parse_xml_declaration(input2, ignore_encoding, ignore_utf16) {
+  let yes_no = toList([v_yes, v_no]);
+  let parse_val = (input3) => {
+    return try$(
+      skip_whitespace(input3),
+      (input4) => {
+        return try$(
+          accept(input4, u_eq),
+          (input5) => {
+            return try$(
+              skip_whitespace(input5),
+              (input6) => {
+                return parse_attribute_value(input6);
+              }
+            );
+          }
+        );
+      }
+    );
+  };
+  let parse_val_expected = (input3, expected) => {
+    return try$(
+      parse_val(input3),
+      (_use0) => {
+        let val = _use0[0];
+        let input$1 = _use0[1];
+        let $2 = find2(expected, (expected2) => {
+          return val === expected2;
+        });
+        if (!$2.isOk() && !$2[0]) {
+          return error_expected_seqs(input$1, expected, val);
+        } else {
+          return new Ok(input$1);
+        }
+      }
+    );
+  };
+  let $ = input2.limit;
+  if ($ instanceof LimitPi && $[0] instanceof Name) {
+    let uri = $[0].uri;
+    let local = $[0].local;
+    return guard(
+      !(is_empty(uri) && local === n_xml),
+      new Ok(input2),
+      () => {
+        return try$(
+          skip_whitespace(input2),
+          (input3) => {
+            return try$(
+              parse_ncname(input3),
+              (_use0) => {
+                let v = _use0[0];
+                let input$1 = _use0[1];
+                return lazy_guard(
+                  v !== n_version,
+                  () => {
+                    return error_expected_seqs(input$1, toList([n_version]), v);
+                  },
+                  () => {
+                    return try$(
+                      parse_val_expected(
+                        input$1,
+                        toList([v_version_1_0, v_version_1_1])
+                      ),
+                      (input4) => {
+                        return try$(
+                          skip_whitespace(input4),
+                          (input5) => {
+                            return try$(
+                              (() => {
+                                let $1 = input5.char !== u_qmark;
+                                if ($1) {
+                                  return try$(
+                                    parse_ncname(input5),
+                                    (_use02) => {
+                                      let name = _use02[0];
+                                      let input$12 = _use02[1];
+                                      return try$(
+                                        (() => {
+                                          let $2 = name === n_encoding;
+                                          if ($2) {
+                                            return try$(
+                                              parse_val(input$12),
+                                              (_use03) => {
+                                                let encoding = _use03[0];
+                                                let input$2 = _use03[1];
+                                                let encoding$1 = lowercase(
+                                                  encoding
+                                                );
+                                                return try$(
+                                                  guard(
+                                                    ignore_encoding,
+                                                    new Ok(input$2),
+                                                    () => {
+                                                      return guard(
+                                                        encoding$1 === v_utf_8,
+                                                        new Ok(
+                                                          (() => {
+                                                            let _record = input$2;
+                                                            return new Input(
+                                                              _record.encoding,
+                                                              _record.strip,
+                                                              _record.namespace_callback,
+                                                              _record.entity_callback,
+                                                              input_uchar_utf8(),
+                                                              _record.stream,
+                                                              _record.char,
+                                                              _record.cr,
+                                                              _record.line,
+                                                              _record.column,
+                                                              _record.limit,
+                                                              _record.peek,
+                                                              _record.stripping,
+                                                              _record.last_whitespace,
+                                                              _record.scopes,
+                                                              _record.ns,
+                                                              _record.identifier,
+                                                              _record.data
+                                                            );
+                                                          })()
+                                                        ),
+                                                        () => {
+                                                          return guard(
+                                                            encoding$1 === v_utf_16be,
+                                                            new Ok(
+                                                              (() => {
+                                                                let _record = input$2;
+                                                                return new Input(
+                                                                  _record.encoding,
+                                                                  _record.strip,
+                                                                  _record.namespace_callback,
+                                                                  _record.entity_callback,
+                                                                  input_uchar_utf16be(),
+                                                                  _record.stream,
+                                                                  _record.char,
+                                                                  _record.cr,
+                                                                  _record.line,
+                                                                  _record.column,
+                                                                  _record.limit,
+                                                                  _record.peek,
+                                                                  _record.stripping,
+                                                                  _record.last_whitespace,
+                                                                  _record.scopes,
+                                                                  _record.ns,
+                                                                  _record.identifier,
+                                                                  _record.data
+                                                                );
+                                                              })()
+                                                            ),
+                                                            () => {
+                                                              return guard(
+                                                                encoding$1 === v_utf_16le,
+                                                                new Ok(
+                                                                  (() => {
+                                                                    let _record = input$2;
+                                                                    return new Input(
+                                                                      _record.encoding,
+                                                                      _record.strip,
+                                                                      _record.namespace_callback,
+                                                                      _record.entity_callback,
+                                                                      input_uchar_utf16le(),
+                                                                      _record.stream,
+                                                                      _record.char,
+                                                                      _record.cr,
+                                                                      _record.line,
+                                                                      _record.column,
+                                                                      _record.limit,
+                                                                      _record.peek,
+                                                                      _record.stripping,
+                                                                      _record.last_whitespace,
+                                                                      _record.scopes,
+                                                                      _record.ns,
+                                                                      _record.identifier,
+                                                                      _record.data
+                                                                    );
+                                                                  })()
+                                                                ),
+                                                                () => {
+                                                                  return guard(
+                                                                    encoding$1 === v_iso_8859_1,
+                                                                    new Ok(
+                                                                      (() => {
+                                                                        let _record = input$2;
+                                                                        return new Input(
+                                                                          _record.encoding,
+                                                                          _record.strip,
+                                                                          _record.namespace_callback,
+                                                                          _record.entity_callback,
+                                                                          input_uchar_iso_8859_1(),
+                                                                          _record.stream,
+                                                                          _record.char,
+                                                                          _record.cr,
+                                                                          _record.line,
+                                                                          _record.column,
+                                                                          _record.limit,
+                                                                          _record.peek,
+                                                                          _record.stripping,
+                                                                          _record.last_whitespace,
+                                                                          _record.scopes,
+                                                                          _record.ns,
+                                                                          _record.identifier,
+                                                                          _record.data
+                                                                        );
+                                                                      })()
+                                                                    ),
+                                                                    () => {
+                                                                      return guard(
+                                                                        encoding$1 === v_iso_8859_15,
+                                                                        new Ok(
+                                                                          (() => {
+                                                                            let _record = input$2;
+                                                                            return new Input(
+                                                                              _record.encoding,
+                                                                              _record.strip,
+                                                                              _record.namespace_callback,
+                                                                              _record.entity_callback,
+                                                                              input_uchar_iso_8859_15(),
+                                                                              _record.stream,
+                                                                              _record.char,
+                                                                              _record.cr,
+                                                                              _record.line,
+                                                                              _record.column,
+                                                                              _record.limit,
+                                                                              _record.peek,
+                                                                              _record.stripping,
+                                                                              _record.last_whitespace,
+                                                                              _record.scopes,
+                                                                              _record.ns,
+                                                                              _record.identifier,
+                                                                              _record.data
+                                                                            );
+                                                                          })()
+                                                                        ),
+                                                                        () => {
+                                                                          return guard(
+                                                                            encoding$1 === v_us_ascii,
+                                                                            new Ok(
+                                                                              (() => {
+                                                                                let _record = input$2;
+                                                                                return new Input(
+                                                                                  _record.encoding,
+                                                                                  _record.strip,
+                                                                                  _record.namespace_callback,
+                                                                                  _record.entity_callback,
+                                                                                  input_uchar_ascii(),
+                                                                                  _record.stream,
+                                                                                  _record.char,
+                                                                                  _record.cr,
+                                                                                  _record.line,
+                                                                                  _record.column,
+                                                                                  _record.limit,
+                                                                                  _record.peek,
+                                                                                  _record.stripping,
+                                                                                  _record.last_whitespace,
+                                                                                  _record.scopes,
+                                                                                  _record.ns,
+                                                                                  _record.identifier,
+                                                                                  _record.data
+                                                                                );
+                                                                              })()
+                                                                            ),
+                                                                            () => {
+                                                                              return guard(
+                                                                                encoding$1 === v_ascii,
+                                                                                new Ok(
+                                                                                  (() => {
+                                                                                    let _record = input$2;
+                                                                                    return new Input(
+                                                                                      _record.encoding,
+                                                                                      _record.strip,
+                                                                                      _record.namespace_callback,
+                                                                                      _record.entity_callback,
+                                                                                      input_uchar_ascii(),
+                                                                                      _record.stream,
+                                                                                      _record.char,
+                                                                                      _record.cr,
+                                                                                      _record.line,
+                                                                                      _record.column,
+                                                                                      _record.limit,
+                                                                                      _record.peek,
+                                                                                      _record.stripping,
+                                                                                      _record.last_whitespace,
+                                                                                      _record.scopes,
+                                                                                      _record.ns,
+                                                                                      _record.identifier,
+                                                                                      _record.data
+                                                                                    );
+                                                                                  })()
+                                                                                ),
+                                                                                () => {
+                                                                                  return lazy_guard(
+                                                                                    encoding$1 === v_utf_16,
+                                                                                    () => {
+                                                                                      if (ignore_utf16) {
+                                                                                        return new Ok(
+                                                                                          input$2
+                                                                                        );
+                                                                                      } else {
+                                                                                        return error(
+                                                                                          input$2,
+                                                                                          new MalformedCharStream()
+                                                                                        );
+                                                                                      }
+                                                                                    },
+                                                                                    () => {
+                                                                                      return error(
+                                                                                        input$2,
+                                                                                        new UnknownEncoding(
+                                                                                          encoding$1
+                                                                                        )
+                                                                                      );
+                                                                                    }
+                                                                                  );
+                                                                                }
+                                                                              );
+                                                                            }
+                                                                          );
+                                                                        }
+                                                                      );
+                                                                    }
+                                                                  );
+                                                                }
+                                                              );
+                                                            }
+                                                          );
+                                                        }
+                                                      );
+                                                    }
+                                                  ),
+                                                  (input6) => {
+                                                    return try$(
+                                                      skip_whitespace(input6),
+                                                      (input7) => {
+                                                        return guard(
+                                                          input7.char === u_qmark,
+                                                          new Ok(input7),
+                                                          () => {
+                                                            return try$(
+                                                              parse_ncname(
+                                                                input7
+                                                              ),
+                                                              (_use04) => {
+                                                                let name$1 = _use04[0];
+                                                                let input$13 = _use04[1];
+                                                                let $3 = name$1 === n_standalone;
+                                                                if ($3) {
+                                                                  return parse_val_expected(
+                                                                    input$13,
+                                                                    yes_no
+                                                                  );
+                                                                } else {
+                                                                  return error_expected_seqs(
+                                                                    input$13,
+                                                                    toList([
+                                                                      n_standalone,
+                                                                      "?>"
+                                                                    ]),
+                                                                    name$1
+                                                                  );
+                                                                }
+                                                              }
+                                                            );
+                                                          }
+                                                        );
+                                                      }
+                                                    );
+                                                  }
+                                                );
+                                              }
+                                            );
+                                          } else {
+                                            let $3 = name === n_standalone;
+                                            if ($3) {
+                                              return parse_val_expected(
+                                                input$12,
+                                                yes_no
+                                              );
+                                            } else {
+                                              return error_expected_seqs(
+                                                input$12,
+                                                toList([
+                                                  n_encoding,
+                                                  n_standalone,
+                                                  "?>"
+                                                ]),
+                                                name
+                                              );
+                                            }
+                                          }
+                                        })(),
+                                        (input6) => {
+                                          return new Ok(input6);
+                                        }
+                                      );
+                                    }
+                                  );
+                                } else {
+                                  return new Ok(input5);
+                                }
+                              })(),
+                              (input6) => {
+                                return try$(
+                                  skip_whitespace(input6),
+                                  (input7) => {
+                                    return try$(
+                                      accept(input7, u_qmark),
+                                      (input8) => {
+                                        return try$(
+                                          accept(input8, u_gt),
+                                          (input9) => {
+                                            return parse_limit(input9);
+                                          }
+                                        );
+                                      }
+                                    );
+                                  }
+                                );
+                              }
+                            );
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          }
+        );
+      }
+    );
+  } else {
+    return new Ok(input2);
+  }
+}
+function eoi(input2) {
+  return guard(
+    input2.char === u_eoi,
+    new Ok([true, input2]),
+    () => {
+      return guard(
+        input2.char !== u_start_doc,
+        new Ok([false, input2]),
+        () => {
+          return lazy_guard(
+            !isEqual(input2.peek, new ElementEnd()),
+            () => {
+              return try$(
+                find_encoding(input2),
+                (_use0) => {
+                  let ignore_incoding = _use0[0];
+                  let input$1 = _use0[1];
+                  return try$(
+                    parse_limit(input$1),
+                    (input3) => {
+                      return try$(
+                        parse_xml_declaration(input3, ignore_incoding, false),
+                        (input4) => {
+                          return try$(
+                            parse_dtd_signal(input4),
+                            (_use02) => {
+                              let signal$1 = _use02[0];
+                              let input$12 = _use02[1];
+                              let _block;
+                              let _record = input$12;
+                              _block = new Input(
+                                _record.encoding,
+                                _record.strip,
+                                _record.namespace_callback,
+                                _record.entity_callback,
+                                _record.uchar,
+                                _record.stream,
+                                _record.char,
+                                _record.cr,
+                                _record.line,
+                                _record.column,
+                                _record.limit,
+                                signal$1,
+                                _record.stripping,
+                                _record.last_whitespace,
+                                _record.scopes,
+                                _record.ns,
+                                _record.identifier,
+                                _record.data
+                              );
+                              let input$2 = _block;
+                              return new Ok([false, input$2]);
+                            }
+                          );
+                        }
+                      );
+                    }
+                  );
+                }
+              );
+            },
+            () => {
+              return try$(
+                next_char_eof(input2),
+                (input3) => {
+                  return try$(
+                    parse_limit(input3),
+                    (input4) => {
+                      return guard(
+                        input4.char === u_eoi,
+                        new Ok([true, input4]),
+                        () => {
+                          return try$(
+                            skip_misc(input4, true),
+                            (input5) => {
+                              return guard(
+                                input5.char === u_eoi,
+                                new Ok([true, input5]),
+                                () => {
+                                  return try$(
+                                    parse_xml_declaration(input5, false, true),
+                                    (input6) => {
+                                      return try$(
+                                        parse_dtd_signal(input6),
+                                        (_use0) => {
+                                          let signal$1 = _use0[0];
+                                          let input$1 = _use0[1];
+                                          let _block;
+                                          let _record = input$1;
+                                          _block = new Input(
+                                            _record.encoding,
+                                            _record.strip,
+                                            _record.namespace_callback,
+                                            _record.entity_callback,
+                                            _record.uchar,
+                                            _record.stream,
+                                            _record.char,
+                                            _record.cr,
+                                            _record.line,
+                                            _record.column,
+                                            _record.limit,
+                                            signal$1,
+                                            _record.stripping,
+                                            _record.last_whitespace,
+                                            _record.scopes,
+                                            _record.ns,
+                                            _record.identifier,
+                                            _record.data
+                                          );
+                                          let input$2 = _block;
+                                          return new Ok([false, input$2]);
+                                        }
+                                      );
+                                    }
+                                  );
+                                }
+                              );
+                            }
+                          );
+                        }
+                      );
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+}
+function peek(input2) {
+  let $ = eoi(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else if ($.isOk() && $[0][0]) {
+    let input$1 = $[0][1];
+    return error(input$1, new UnexpectedEoi());
+  } else {
+    let input$1 = $[0][1];
+    return new Ok([input$1.peek, input$1]);
+  }
+}
+function parse_chardata__handle_reference(input2, add_char) {
+  let $ = parse_reference(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let reference = $[0][0];
+    let input$1 = $[0][1];
+    let _block;
+    let _pipe = to_utf_codepoints(reference);
+    _block = fold(
+      _pipe,
+      input$1,
+      (input3, char) => {
+        return add_char(input3, utf_codepoint_to_int(char));
+      }
+    );
+    let input$2 = _block;
+    return parse_chardata(input$2, add_char);
+  }
+}
+function parse_chardata(input2, add_char) {
+  let $ = input2.char === u_lt;
+  if ($) {
+    return new Ok(input2);
+  } else {
+    let $1 = input2.char === u_amp;
+    if ($1) {
+      return parse_chardata__handle_reference(input2, add_char);
+    } else {
+      let $2 = input2.char === u_rbrack;
+      if ($2) {
+        return parse_chardata__handle_rbrack(input2, add_char);
+      } else {
+        return parse_chardata__handle_non_rbrack(input2, add_char);
+      }
+    }
+  }
+}
+function parse_chardata__handle_non_rbrack(input2, add_char) {
+  let input$1 = add_char(input2, input2.char);
+  let $ = next_char(input$1);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let input$2 = $[0];
+    return parse_chardata(input$2, add_char);
+  }
+}
+function parse_data__bufferize(loop$input, loop$add_char) {
+  while (true) {
+    let input2 = loop$input;
+    let add_char = loop$add_char;
+    let $ = input2.limit;
+    if ($ instanceof LimitText) {
+      let $1 = parse_chardata(input2, add_char);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        let $2 = parse_limit(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$add_char = add_char;
+        }
+      }
+    } else if ($ instanceof LimitCData) {
+      let $1 = parse_cdata(input2, add_char);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        let $2 = parse_limit(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$add_char = add_char;
+        }
+      }
+    } else if ($ instanceof LimitStartTag) {
+      return new Ok(input2);
+    } else if ($ instanceof LimitEndTag) {
+      return new Ok(input2);
+    } else if ($ instanceof LimitPi) {
+      let $1 = skip_pi(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        let $2 = parse_limit(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$add_char = add_char;
+        }
+      }
+    } else if ($ instanceof LimitComment) {
+      let $1 = skip_comment(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        let $2 = parse_limit(input$1);
+        if (!$2.isOk()) {
+          let e = $2[0];
+          return new Error2(e);
+        } else {
+          let input$2 = $2[0];
+          loop$input = input$2;
+          loop$add_char = add_char;
+        }
+      }
+    } else if ($ instanceof LimitDtd) {
+      return error(input2, new IllegalCharSeq("<!D"));
+    } else {
+      return error(input2, new UnexpectedEoi());
+    }
+  }
+}
+function parse_data(input2) {
+  let input$1 = clear_data(input2);
+  let _block;
+  let _record = input$1;
+  _block = new Input(
+    _record.encoding,
+    _record.strip,
+    _record.namespace_callback,
+    _record.entity_callback,
+    _record.uchar,
+    _record.stream,
+    _record.char,
+    _record.cr,
+    _record.line,
+    _record.column,
+    _record.limit,
+    _record.peek,
+    _record.stripping,
+    true,
+    _record.scopes,
+    _record.ns,
+    _record.identifier,
+    _record.data
+  );
+  let input$2 = _block;
+  let _block$1;
+  let $ = input$2.stripping;
+  if ($) {
+    _block$1 = add_char_to_data_strip;
+  } else {
+    _block$1 = add_char_to_data;
+  }
+  let add_char = _block$1;
+  let $1 = parse_data__bufferize(input$2, add_char);
+  if (!$1.isOk()) {
+    let e = $1[0];
+    return new Error2(e);
+  } else {
+    let input$3 = $1[0];
+    let data = buffer_to_string(input$3.data);
+    return new Ok([data, input$3]);
+  }
+}
+function parse_attributes__loop__handle_qname_and_value(input2, pre_acc, acc) {
+  let $ = parse_qname(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let name = $[0][0];
+    let prefix = $[0][0].uri;
+    let local = $[0][0].local;
+    let input$1 = $[0][1];
+    let $1 = skip_whitespace(input$1);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let input$2 = $1[0];
+      let $2 = accept(input$2, u_eq);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let input$3 = $2[0];
+        let $3 = parse_attribute_value(input$3);
+        if (!$3.isOk()) {
+          let e = $3[0];
+          return new Error2(e);
+        } else {
+          let attribute_value = $3[0][0];
+          let input$4 = $3[0][1];
+          let attribute3 = new Attribute2(name, attribute_value);
+          let $4 = is_empty(prefix) && local === n_xmlns;
+          if ($4) {
+            let ns = insert(input$4.ns, "", attribute_value);
+            let _block;
+            let _record = input$4;
+            _block = new Input(
+              _record.encoding,
+              _record.strip,
+              _record.namespace_callback,
+              _record.entity_callback,
+              _record.uchar,
+              _record.stream,
+              _record.char,
+              _record.cr,
+              _record.line,
+              _record.column,
+              _record.limit,
+              _record.peek,
+              _record.stripping,
+              _record.last_whitespace,
+              _record.scopes,
+              ns,
+              _record.identifier,
+              _record.data
+            );
+            let input$5 = _block;
+            return parse_attributes__loop(
+              input$5,
+              prepend("", pre_acc),
+              prepend(attribute3, acc)
+            );
+          } else {
+            let $5 = prefix === n_xmlns;
+            if ($5) {
+              let ns = insert(input$4.ns, local, attribute_value);
+              let _block;
+              let _record = input$4;
+              _block = new Input(
+                _record.encoding,
+                _record.strip,
+                _record.namespace_callback,
+                _record.entity_callback,
+                _record.uchar,
+                _record.stream,
+                _record.char,
+                _record.cr,
+                _record.line,
+                _record.column,
+                _record.limit,
+                _record.peek,
+                _record.stripping,
+                _record.last_whitespace,
+                _record.scopes,
+                ns,
+                _record.identifier,
+                _record.data
+              );
+              let input$5 = _block;
+              return parse_attributes__loop(
+                input$5,
+                prepend(local, pre_acc),
+                prepend(attribute3, acc)
+              );
+            } else {
+              let input$5 = maybe_update_stripping(
+                input$4,
+                attribute_value,
+                prefix,
+                local
+              );
+              return parse_attributes__loop(
+                input$5,
+                pre_acc,
+                prepend(attribute3, acc)
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+}
+function parse_attributes__loop(input2, pre_acc, acc) {
+  let $ = is_whitespace(input2.char);
+  if (!$) {
+    return new Ok([pre_acc, acc, input2]);
+  } else {
+    let $1 = skip_whitespace(input2);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let input$1 = $1[0];
+      let $2 = input$1.char;
+      if ($2 === 47 || input$1.char === 62) {
+        let char = $2;
+        return new Ok([pre_acc, acc, input$1]);
+      } else {
+        return parse_attributes__loop__handle_qname_and_value(
+          input$1,
+          pre_acc,
+          acc
+        );
+      }
+    }
+  }
+}
+function parse_attributes(input2) {
+  return parse_attributes__loop(input2, toList([]), toList([]));
+}
+function parse_element_start_signal(input2, name) {
+  let strip = input2.stripping;
+  let $ = parse_attributes(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(e);
+  } else {
+    let prefixes = $[0][0];
+    let attributes = $[0][1];
+    let input$1 = $[0][2];
+    let _block;
+    let _record = input$1;
+    _block = new Input(
+      _record.encoding,
+      _record.strip,
+      _record.namespace_callback,
+      _record.entity_callback,
+      _record.uchar,
+      _record.stream,
+      _record.char,
+      _record.cr,
+      _record.line,
+      _record.column,
+      _record.limit,
+      _record.peek,
+      _record.stripping,
+      _record.last_whitespace,
+      prepend([name, prefixes, strip], input$1.scopes),
+      _record.ns,
+      _record.identifier,
+      _record.data
+    );
+    let input$2 = _block;
+    let attributes$1 = reverse(attributes);
+    let result = fold(
+      attributes$1,
+      new Ok([toList([]), input$2]),
+      (acc, attribute3) => {
+        if (!acc.isOk()) {
+          let e = acc[0];
+          return new Error2(e);
+        } else {
+          let attributes$2 = acc[0][0];
+          let input$3 = acc[0][1];
+          let $1 = expand_attribute(input$3, attribute3);
+          if (!$1.isOk()) {
+            let e = $1[0];
+            return new Error2(e);
+          } else {
+            let expanded_attribute = $1[0][0];
+            let input$4 = $1[0][1];
+            return new Ok(
+              [prepend(expanded_attribute, attributes$2), input$4]
+            );
+          }
+        }
+      }
+    );
+    if (!result.isOk()) {
+      let e = result[0];
+      return new Error2(e);
+    } else {
+      let expanded_attributes = result[0][0];
+      let input$3 = result[0][1];
+      let $1 = expand_name(input$3, name);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let name$1 = $1[0];
+        let signal$1 = new ElementStart(new Tag(name$1, expanded_attributes));
+        return new Ok([signal$1, input$3]);
+      }
+    }
+  }
+}
+function parse_signal__empty_scope(input2) {
+  let $ = input2.limit;
+  if ($ instanceof LimitStartTag) {
+    let name = $[0];
+    return parse_element_start_signal(input2, name);
+  } else {
+    return error(input2, new ExpectedRootElement());
+  }
+}
+function parse_signal__find(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = input2.limit;
+    if ($ instanceof LimitStartTag) {
+      let name = $[0];
+      return parse_element_start_signal(input2, name);
+    } else if ($ instanceof LimitEndTag) {
+      let name = $[0];
+      return parse_element_end_signal(input2, name);
+    } else if ($ instanceof LimitText) {
+      let $1 = parse_data(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let data = $1[0][0];
+        let input$1 = $1[0][1];
+        let $2 = is_empty(data);
+        if ($2) {
+          loop$input = input$1;
+        } else {
+          return new Ok([new Data(data), input$1]);
+        }
+      }
+    } else if ($ instanceof LimitCData) {
+      let $1 = parse_data(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let data = $1[0][0];
+        let input$1 = $1[0][1];
+        let $2 = is_empty(data);
+        if ($2) {
+          loop$input = input$1;
+        } else {
+          return new Ok([new Data(data), input$1]);
+        }
+      }
+    } else if ($ instanceof LimitPi) {
+      let $1 = skip_pi_then_parse_limit(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        loop$input = input$1;
+      }
+    } else if ($ instanceof LimitComment) {
+      let $1 = skip_comment_then_parse_limit(input2);
+      if (!$1.isOk()) {
+        let e = $1[0];
+        return new Error2(e);
+      } else {
+        let input$1 = $1[0];
+        loop$input = input$1;
+      }
+    } else if ($ instanceof LimitDtd) {
+      return error(input2, new IllegalCharSeq("<!D"));
+    } else {
+      return error(input2, new UnexpectedEoi());
+    }
+  }
+}
+function parse_signal__non_empty_scope(input2) {
+  let _block;
+  let $ = input2.peek;
+  if ($ instanceof ElementStart) {
+    let $1 = skip_whitespace(input2);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      _block = new Error2(e);
+    } else {
+      let input$1 = $1[0];
+      let $2 = input$1.char === u_gt;
+      if ($2) {
+        _block = accept_then_parse_limit(input$1, u_gt);
+      } else {
+        let $3 = input$1.char === u_slash;
+        if ($3) {
+          let _block$1;
+          let $4 = input$1.scopes;
+          if ($4.atLeastLength(1)) {
+            let tag2 = $4.head[0];
+            _block$1 = tag2;
+          } else {
+            throw makeError(
+              "panic",
+              "xmlm",
+              2551,
+              "parse_signal__non_empty_scope",
+              "impossible",
+              {}
+            );
+          }
+          let tag = _block$1;
+          let $5 = next_char(input$1);
+          if (!$5.isOk()) {
+            let e = $5[0];
+            _block = new Error2(e);
+          } else {
+            let input$2 = $5[0];
+            _block = new Ok(
+              (() => {
+                let _record = input$2;
+                return new Input(
+                  _record.encoding,
+                  _record.strip,
+                  _record.namespace_callback,
+                  _record.entity_callback,
+                  _record.uchar,
+                  _record.stream,
+                  _record.char,
+                  _record.cr,
+                  _record.line,
+                  _record.column,
+                  new LimitEndTag(tag),
+                  _record.peek,
+                  _record.stripping,
+                  _record.last_whitespace,
+                  _record.scopes,
+                  _record.ns,
+                  _record.identifier,
+                  _record.data
+                );
+              })()
+            );
+          }
+        } else {
+          _block = error_expected_chars(input$1, toList([u_slash, u_gt]));
+        }
+      }
+    }
+  } else {
+    _block = new Ok(input2);
+  }
+  let result = _block;
+  if (!result.isOk()) {
+    let e = result[0];
+    return new Error2(e);
+  } else {
+    let input$1 = result[0];
+    return parse_signal__find(input$1);
+  }
+}
+function parse_signal(input2) {
+  let $ = input2.scopes;
+  if ($.hasLength(0)) {
+    return parse_signal__empty_scope(input2);
+  } else {
+    return parse_signal__non_empty_scope(input2);
+  }
+}
+function signal(input2) {
+  let $ = input2.char === u_end_doc;
+  if ($) {
+    let _block;
+    let _record = input2;
+    _block = new Input(
+      _record.encoding,
+      _record.strip,
+      _record.namespace_callback,
+      _record.entity_callback,
+      _record.uchar,
+      _record.stream,
+      u_start_doc,
+      _record.cr,
+      _record.line,
+      _record.column,
+      _record.limit,
+      _record.peek,
+      _record.stripping,
+      _record.last_whitespace,
+      _record.scopes,
+      _record.ns,
+      _record.identifier,
+      _record.data
+    );
+    let input$1 = _block;
+    return new Ok([input$1.peek, input$1]);
+  } else {
+    let $1 = peek(input2);
+    if (!$1.isOk()) {
+      let e = $1[0];
+      return new Error2(e);
+    } else {
+      let signal$1 = $1[0][0];
+      let input$1 = $1[0][1];
+      let $2 = parse_signal(input$1);
+      if (!$2.isOk()) {
+        let e = $2[0];
+        return new Error2(e);
+      } else {
+        let peeked_signal = $2[0][0];
+        let input$2 = $2[0][1];
+        let _block;
+        let _record = input$2;
+        _block = new Input(
+          _record.encoding,
+          _record.strip,
+          _record.namespace_callback,
+          _record.entity_callback,
+          _record.uchar,
+          _record.stream,
+          _record.char,
+          _record.cr,
+          _record.line,
+          _record.column,
+          _record.limit,
+          peeked_signal,
+          _record.stripping,
+          _record.last_whitespace,
+          _record.scopes,
+          _record.ns,
+          _record.identifier,
+          _record.data
+        );
+        let input$3 = _block;
+        return new Ok([signal$1, input$3]);
+      }
+    }
+  }
+}
+
+// build/dev/javascript/neb_stats/parse.mjs
+var TeamA = class extends CustomType {
+};
+var TeamB = class extends CustomType {
+};
+var ParseTeamsState = class extends CustomType {
+  constructor(maybe_team_a, maybe_team_b) {
+    super();
+    this.maybe_team_a = maybe_team_a;
+    this.maybe_team_b = maybe_team_b;
+  }
+};
+var ParseTeamState = class extends CustomType {
+  constructor(which_team, players) {
+    super();
+    this.which_team = which_team;
+    this.players = players;
+  }
+};
+var ParsePlayerState = class extends CustomType {
+  constructor(name, ships) {
+    super();
+    this.name = name;
+    this.ships = ships;
+  }
+};
+function parse_team_id(loop$maybe_id, loop$input) {
+  while (true) {
+    let maybe_id = loop$maybe_id;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      return new Error2("unexpected nested element for team id");
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (maybe_id instanceof Some) {
+        let which_team = maybe_id[0];
+        return new Ok([which_team, next_input]);
+      } else {
+        return new Error2("Missing team id");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data && $[0][0][0] === "TeamA") {
+      let next_input = $[0][1];
+      loop$maybe_id = new Some(new TeamA());
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof Data && $[0][0][0] === "TeamB") {
+      let next_input = $[0][1];
+      loop$maybe_id = new Some(new TeamB());
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$maybe_id = maybe_id;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_player_name(loop$maybe_name, loop$input) {
+  while (true) {
+    let maybe_name = loop$maybe_name;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      return new Error2("unexpected nested element for player name");
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (maybe_name instanceof Some) {
+        let name = maybe_name[0];
+        return new Ok([name, next_input]);
+      } else {
+        return new Error2("Missing player name");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let name = $[0][0][0];
+      let next_input = $[0][1];
+      loop$maybe_name = new Some(name);
+      loop$input = next_input;
+    } else {
+      let next_input = $[0][1];
+      loop$maybe_name = maybe_name;
+      loop$input = next_input;
+    }
+  }
+}
+function skip_tag(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok(next_input);
+    } else {
+      let next_input = $[0][1];
+      loop$input = next_input;
+    }
+  }
+}
+function parse_player_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "PlayerName") {
+      let next_input = $[0][1];
+      return try$(
+        parse_player_name(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_player_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParsePlayerState(new Some(name), _record.ships);
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Ships") {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_player_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParsePlayerState(_record.name, toList([]));
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_player_inner(parse_state, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParsePlayerState && parse_state.name instanceof Some) {
+        let name = parse_state.name[0];
+        let ships = parse_state.ships;
+        return new Ok([new Player(name, ships), next_input]);
+      } else {
+        return new Error2("Missing player data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_player(input2) {
+  return parse_player_inner(new ParsePlayerState(new None(), toList([])), input2);
+}
+function parse_players_inner(loop$players, loop$input) {
+  while (true) {
+    let players = loop$players;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "AARPlayerReportOfShipBattleReportCraftBattleReport") {
+      let next_input = $[0][1];
+      return try$(
+        parse_player(next_input),
+        (_use0) => {
+          let player = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_players_inner(prepend(player, players), next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_players_inner(players, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([players, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$players = players;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_players(input2) {
+  return parse_players_inner(toList([]), input2);
+}
+function parse_team_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamId") {
+      let next_input = $[0][1];
+      return try$(
+        parse_team_id(new None(), next_input),
+        (_use0) => {
+          let team_id = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_team_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseTeamState(new Some(team_id), _record.players);
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Players") {
+      let next_input = $[0][1];
+      return try$(
+        parse_players(next_input),
+        (_use0) => {
+          let players = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_team_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseTeamState(_record.which_team, players);
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_team_inner(parse_state, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseTeamState && parse_state.which_team instanceof Some) {
+        let which_team = parse_state.which_team[0];
+        let players = parse_state.players;
+        return new Ok([which_team, new Team(players), next_input]);
+      } else {
+        return new Error2("Missing team data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_team(input2) {
+  return parse_team_inner(new ParseTeamState(new None(), toList([])), input2);
+}
+function parse_teams_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamReportOfShipBattleReportCraftBattleReport") {
+      let next_input = $[0][1];
+      return try$(
+        parse_team(next_input),
+        (_use0) => {
+          let which_team = _use0[0];
+          let team = _use0[1];
+          let next_input$1 = _use0[2];
+          let _block;
+          if (which_team instanceof TeamA) {
+            let _record = parse_state;
+            _block = new ParseTeamsState(new Some(team), _record.maybe_team_b);
+          } else {
+            let _record = parse_state;
+            _block = new ParseTeamsState(_record.maybe_team_a, new Some(team));
+          }
+          let new_state = _block;
+          return parse_teams_inner(new_state, next_input$1);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseTeamsState && parse_state.maybe_team_a instanceof Some && parse_state.maybe_team_b instanceof Some) {
+        let team_a = parse_state.maybe_team_a[0];
+        let team_b = parse_state.maybe_team_b[0];
+        return new Ok([team_a, team_b, next_input]);
+      } else {
+        return new Error2("Missing team data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_teams(input2) {
+  return parse_teams_inner(new ParseTeamsState(new None(), new None()), input2);
+}
+function parse_report_element(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Teams") {
+      let next_input = $[0][1];
+      return map4(
+        parse_teams(next_input),
+        (_use0) => {
+          let team_a = _use0[0];
+          let team_b = _use0[1];
+          let next_input$1 = _use0[2];
+          return [new Report(team_a, team_b), next_input$1];
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      return new Error2("Unexpected end of XML");
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$input = next_input;
+    }
+  }
+}
+function parse_report_xml(loop$input) {
+  while (true) {
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "FullAfterActionReport") {
+      let next_input = $[0][1];
+      return parse_report_element(next_input);
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_report_xml(next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      return new Error2("Unexpected end of XML");
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      return new Error2("Unexpected data");
+    } else {
+      let next_input = $[0][1];
+      loop$input = next_input;
+    }
+  }
+}
+function parse_report(content) {
+  let _pipe = content;
+  let _pipe$1 = from_string(_pipe);
+  let _pipe$2 = with_stripping(_pipe$1, true);
+  return parse_report_xml(_pipe$2);
+}
+
+// build/dev/javascript/neb_stats/read_report_ffi.mjs
+function readUploadedFile(inputId) {
+  return new Promise((resolve2, reject) => {
+    const input2 = document.getElementById(inputId);
+    if (!input2 || !input2.files || input2.files.length === 0) {
+      reject(new Error("No file selected"));
+      return;
+    }
+    const file = input2.files[0];
+    const reader = new FileReader();
+    reader.onload = (event4) => resolve2(event4.target.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsText(file);
+  });
+}
+
 // build/dev/javascript/neb_stats/neb_stats.mjs
 var AppState = class extends CustomType {
-  constructor(report) {
+  constructor(report, error_message) {
     super();
     this.report = report;
+    this.error_message = error_message;
   }
 };
 var UploadReport = class extends CustomType {
@@ -4448,17 +9518,73 @@ var UploadReport = class extends CustomType {
     this[0] = x0;
   }
 };
+var ReportRead = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
 function init2(_) {
-  return new AppState(new None());
+  return [new AppState(new None(), new None()), none()];
 }
 function update2(state, msg) {
-  {
+  if (msg instanceof UploadReport) {
+    let read_effect = from(
+      (dispatch) => {
+        let _pipe = readUploadedFile("report_field");
+        tap(
+          _pipe,
+          (content) => {
+            return dispatch(new ReportRead(content));
+          }
+        );
+        return void 0;
+      }
+    );
+    return [state, read_effect];
+  } else if (msg instanceof ReportRead) {
     let content = msg[0];
-    let _record = state;
-    return new AppState(new Some(init(dummy_report())));
+    let _block;
+    let $ = parse_report(content);
+    if ($.isOk()) {
+      let report = $[0][0];
+      let _record = state;
+      _block = new AppState(
+        new Some(init(report)),
+        _record.error_message
+      );
+    } else {
+      let msg$1 = $[0];
+      let _record = state;
+      _block = new AppState(_record.report, new Some(msg$1));
+    }
+    let next_state = _block;
+    return [next_state, none()];
+  } else {
+    let error2 = msg[0];
+    return [
+      (() => {
+        let _record = state;
+        return new AppState(
+          _record.report,
+          new Some(concat2(toList(["Failed to read report: ", error2])))
+        );
+      })(),
+      none()
+    ];
   }
 }
-function upload_form() {
+function upload_form(error_message) {
+  let _block;
+  if (error_message instanceof Some) {
+    let msg = error_message[0];
+    _block = [true, msg];
+  } else {
+    _block = [false, "Upload an after action report xml"];
+  }
+  let $ = _block;
+  let has_error = $[0];
+  let help_text = $[1];
   return form(
     toList([
       class$("box"),
@@ -4466,26 +9592,48 @@ function upload_form() {
         return new UploadReport(var0);
       })
     ]),
-    toList([input(toList([class$("input"), type_("file")]))])
+    toList([
+      div(
+        toList([class$("field")]),
+        toList([
+          div(
+            toList([class$("control")]),
+            toList([
+              input(
+                toList([
+                  id("report_field"),
+                  classes(toList([["input", true], ["is-danger", has_error]])),
+                  type_("file")
+                ])
+              )
+            ])
+          ),
+          p(
+            toList([classes(toList([["help", true], ["is-danger", has_error]]))]),
+            toList([text3(help_text)])
+          )
+        ])
+      )
+    ])
   );
 }
 function view2(state) {
   let $ = state.report;
   if ($ instanceof None) {
-    return upload_form();
+    return upload_form(state.error_message);
   } else {
     let report = $[0];
     return view(report);
   }
 }
 function main() {
-  let app = simple(init2, update2, view2);
+  let app = application(init2, update2, view2);
   let $ = start3(app, "#app", void 0);
   if (!$.isOk()) {
     throw makeError(
       "let_assert",
       "neb_stats",
-      19,
+      25,
       "main",
       "Pattern match failed, no pattern matched the value.",
       { value: $ }
