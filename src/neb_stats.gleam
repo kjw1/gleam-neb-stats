@@ -4,6 +4,7 @@ import gleam/string
 import lustre
 import lustre/attribute.{class, classes, id, type_}
 import lustre/effect
+import lustre/element
 import lustre/element/html.{div, form, input, p, text}
 import lustre/event.{on_change}
 import pages/report as report_page
@@ -17,6 +18,7 @@ type Msg {
   UploadReport(String)
   ReportRead(String)
   ReportReadFailed(String)
+  ReportMsg(report_page.Msg)
 }
 
 pub fn main() {
@@ -59,13 +61,20 @@ fn update(state, msg: Msg) {
       ),
       effect.none(),
     )
+    ReportMsg(report_msg) -> {
+      let report = case state.report {
+        Some(report) -> Some(report_page.update(report, report_msg))
+        None -> None
+      }
+      #(AppState(..state, report: report), effect.none())
+    }
   }
 }
 
 fn view(state: AppState) {
   case state.report {
     None -> upload_form(state.error_message)
-    Some(report) -> report_page.view(report)
+    Some(report) -> report_page.view(report) |> element.map(ReportMsg)
   }
 }
 

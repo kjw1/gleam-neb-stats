@@ -736,6 +736,13 @@ function structurallyCompatibleObjects(a, b) {
   if (nonstructural.some((c) => a instanceof c)) return false;
   return a.constructor === b.constructor;
 }
+function divideFloat(a, b) {
+  if (b === 0) {
+    return 0;
+  } else {
+    return a / b;
+  }
+}
 function makeError(variant, module, line, fn, message, extra) {
   let error2 = new globalThis.Error(message);
   error2.gleam_error = variant;
@@ -1469,6 +1476,29 @@ var Eq = class extends CustomType {
 var Gt = class extends CustomType {
 };
 
+// build/dev/javascript/gleam_stdlib/gleam/float.mjs
+function negate(x) {
+  return -1 * x;
+}
+function round2(x) {
+  let $ = x >= 0;
+  if ($) {
+    return round(x);
+  } else {
+    return 0 - round(negate(x));
+  }
+}
+function to_precision(x, precision) {
+  let $ = precision <= 0;
+  if ($) {
+    let factor = power(10, identity(-precision));
+    return identity(round2(divideFloat(x, factor))) * factor;
+  } else {
+    let factor = power(10, identity(precision));
+    return divideFloat(identity(round2(x * factor)), factor);
+  }
+}
+
 // build/dev/javascript/gleam_stdlib/gleam/list.mjs
 var Ascending = class extends CustomType {
 };
@@ -2190,6 +2220,12 @@ var trim_end_regex = /* @__PURE__ */ new RegExp(`[${unicode_whitespaces}]*$`);
 function bit_array_from_string(string5) {
   return toBitArray([stringBits(string5)]);
 }
+function round(float2) {
+  return Math.round(float2);
+}
+function power(base, exponent) {
+  return Math.pow(base, exponent);
+}
 function codepoint(int5) {
   return new UtfCodepoint(int5);
 }
@@ -2202,18 +2238,18 @@ function utf_codepoint_to_int(utf_codepoint) {
 function new_map() {
   return Dict.new();
 }
-function map_remove(key, map5) {
-  return map5.delete(key);
+function map_remove(key, map6) {
+  return map6.delete(key);
 }
-function map_get(map5, key) {
-  const value = map5.get(key, NOT_FOUND);
+function map_get(map6, key) {
+  const value = map6.get(key, NOT_FOUND);
   if (value === NOT_FOUND) {
     return new Error2(Nil);
   }
   return new Ok(value);
 }
-function map_insert(key, value, map5) {
-  return map5.set(key, value);
+function map_insert(key, value, map6) {
+  return map6.set(key, value);
 }
 function classify_dynamic(data) {
   if (typeof data === "string") {
@@ -2315,10 +2351,10 @@ function inspectString(str) {
   new_str += '"';
   return new_str;
 }
-function inspectDict(map5) {
+function inspectDict(map6) {
   let body = "dict.from_list([";
   let first = true;
-  map5.forEach((value, key) => {
+  map6.forEach((value, key) => {
     if (!first) body = body + ", ";
     body = body + "#(" + inspect(key) + ", " + inspect(value) + ")";
     first = false;
@@ -2734,22 +2770,22 @@ function from(effect) {
 function empty2() {
   return null;
 }
-function get(map5, key) {
-  const value = map5?.get(key);
+function get(map6, key) {
+  const value = map6?.get(key);
   if (value != null) {
     return new Ok(value);
   } else {
     return new Error2(void 0);
   }
 }
-function insert3(map5, key, value) {
-  map5 ??= /* @__PURE__ */ new Map();
-  map5.set(key, value);
-  return map5;
+function insert3(map6, key, value) {
+  map6 ??= /* @__PURE__ */ new Map();
+  map6.set(key, value);
+  return map6;
 }
-function remove(map5, key) {
-  map5?.delete(key);
-  return map5;
+function remove(map6, key) {
+  map6?.delete(key);
+  return map6;
 }
 
 // build/dev/javascript/lustre/lustre/vdom/path.mjs
@@ -4418,11 +4454,11 @@ var virtualiseAttribute = (attr) => {
 var is_browser = () => !!document2;
 var is_reference_equal = (a, b) => a === b;
 var Runtime = class {
-  constructor(root3, [model, effects], view3, update3) {
+  constructor(root3, [model, effects], view3, update4) {
     this.root = root3;
     this.#model = model;
     this.#view = view3;
-    this.#update = update3;
+    this.#update = update4;
     this.#reconciler = new Reconciler(this.root, (event4, path, name) => {
       const [events, msg] = handle(this.#events, path, name, event4);
       this.#events = events;
@@ -4848,6 +4884,53 @@ function fragment2(children) {
     count_fragment_children(children, 0)
   );
 }
+function map5(element3, f) {
+  let mapper = identity2(compose_mapper(identity2(f), element3.mapper));
+  if (element3 instanceof Fragment) {
+    let children = element3.children;
+    let keyed_children = element3.keyed_children;
+    let _record = element3;
+    return new Fragment(
+      _record.kind,
+      _record.key,
+      mapper,
+      identity2(children),
+      identity2(keyed_children),
+      _record.children_count
+    );
+  } else if (element3 instanceof Element) {
+    let attributes = element3.attributes;
+    let children = element3.children;
+    let keyed_children = element3.keyed_children;
+    let _record = element3;
+    return new Element(
+      _record.kind,
+      _record.key,
+      mapper,
+      _record.namespace,
+      _record.tag,
+      identity2(attributes),
+      identity2(children),
+      identity2(keyed_children),
+      _record.self_closing,
+      _record.void
+    );
+  } else if (element3 instanceof UnsafeInnerHtml) {
+    let attributes = element3.attributes;
+    let _record = element3;
+    return new UnsafeInnerHtml(
+      _record.kind,
+      _record.key,
+      mapper,
+      _record.namespace,
+      _record.tag,
+      identity2(attributes),
+      _record.inner_html
+    );
+  } else {
+    return identity2(element3);
+  }
+}
 
 // build/dev/javascript/lustre/lustre/element/html.mjs
 function text3(content) {
@@ -4922,15 +5005,15 @@ function new$6(options) {
 
 // build/dev/javascript/lustre/lustre/runtime/client/spa.ffi.mjs
 var Spa = class _Spa {
-  static start({ init: init3, update: update3, view: view3 }, selector, flags) {
+  static start({ init: init3, update: update4, view: view3 }, selector, flags) {
     if (!is_browser()) return new Error2(new NotABrowser());
     const root3 = selector instanceof HTMLElement ? selector : document2.querySelector(selector);
     if (!root3) return new Error2(new ElementNotFound(selector));
-    return new Ok(new _Spa(root3, init3(flags), update3, view3));
+    return new Ok(new _Spa(root3, init3(flags), update4, view3));
   }
   #runtime;
-  constructor(root3, [init3, effects], update3, view3) {
-    this.#runtime = new Runtime(root3, [init3, effects], view3, update3);
+  constructor(root3, [init3, effects], update4, view3) {
+    this.#runtime = new Runtime(root3, [init3, effects], view3, update4);
   }
   send(message) {
     switch (message.constructor) {
@@ -4957,10 +5040,10 @@ var start = Spa.start;
 
 // build/dev/javascript/lustre/lustre.mjs
 var App = class extends CustomType {
-  constructor(init3, update3, view3, config) {
+  constructor(init3, update4, view3, config) {
     super();
     this.init = init3;
-    this.update = update3;
+    this.update = update4;
     this.view = view3;
     this.config = config;
   }
@@ -4973,8 +5056,8 @@ var ElementNotFound = class extends CustomType {
 };
 var NotABrowser = class extends CustomType {
 };
-function application(init3, update3, view3) {
-  return new App(init3, update3, view3, new$6(empty_list));
+function application(init3, update4, view3) {
+  return new App(init3, update4, view3, new$6(empty_list));
 }
 function start3(app, selector, start_args) {
   return guard(
@@ -5017,6 +5100,9 @@ function on(name, handler) {
     0,
     0
   );
+}
+function on_click(msg) {
+  return on("click", success(msg));
 }
 function on_change(msg) {
   return on(
@@ -5071,42 +5157,84 @@ var Report = class extends CustomType {
 
 // build/dev/javascript/neb_stats/pages/report.mjs
 var PageState = class extends CustomType {
-  constructor(report) {
+  constructor(report, focus_ship) {
     super();
     this.report = report;
+    this.focus_ship = focus_ship;
+  }
+};
+var FocusShip = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
   }
 };
 function init(report) {
-  return new PageState(report);
+  return new PageState(report, new None());
+}
+function update2(state, msg) {
+  {
+    let ship = msg[0];
+    let _record = state;
+    return new PageState(_record.report, ship);
+  }
 }
 function weapon_card(weapon) {
+  let _block;
+  let _pipe = weapon.damage_dealt;
+  let _pipe$1 = to_precision(_pipe, 2);
+  _block = float_to_string(_pipe$1);
+  let damage_string = _block;
   return div(
     toList([class$("box")]),
     toList([
       p(toList([class$("title is-5")]), toList([text3(weapon.name)])),
-      p(
+      p(toList([]), toList([text3("Damage Dealt: " + damage_string)]))
+    ])
+  );
+}
+function ship_detail(ship) {
+  return div(
+    toList([class$("column is-three-fifths")]),
+    toList([
+      div(
         toList([]),
-        toList([text3("Damage Dealt: " + float_to_string(weapon.damage_dealt))])
+        prepend(
+          p(toList([class$("title is-3")]), toList([text3(ship.name)])),
+          (() => {
+            let _pipe = ship.anti_ship_weapons;
+            return map(_pipe, weapon_card);
+          })()
+        )
       )
     ])
   );
+}
+function total_damage_taken(ships) {
+  let _pipe = ships;
+  let _pipe$1 = map(_pipe, (ship) => {
+    return ship.damage_taken;
+  });
+  let _pipe$2 = reduce(_pipe$1, (a, b) => {
+    return a + b;
+  });
+  return unwrap(_pipe$2, 0);
 }
 function ship_damage_dealt(ship) {
   let _pipe = ship.anti_ship_weapons;
   let _pipe$1 = map(_pipe, (w) => {
     return w.damage_dealt;
   });
-  return reduce(_pipe$1, (a, b) => {
+  let _pipe$2 = reduce(_pipe$1, (a, b) => {
     return a + b;
   });
+  let _pipe$3 = unwrap(_pipe$2, 0);
+  return to_precision(_pipe$3, 2);
 }
 function ship_card(ship) {
-  let _block;
-  let _pipe = ship_damage_dealt(ship);
-  _block = unwrap(_pipe, 0);
-  let total_damage = _block;
+  let damage_dealt = ship_damage_dealt(ship);
   return div(
-    toList([class$("card")]),
+    toList([on_click(new FocusShip(new Some(ship))), class$("card")]),
     toList([
       div(
         toList([class$("card-header")]),
@@ -5124,15 +5252,8 @@ function ship_card(ship) {
               br(toList([])),
               text3("Damage Taken: " + to_string(ship.damage_taken)),
               br(toList([])),
-              text3("Damage Dealt: " + float_to_string(total_damage))
+              text3("Antiship Damage Dealt: " + float_to_string(damage_dealt))
             ])
-          ),
-          div(
-            toList([class$("box")]),
-            (() => {
-              let _pipe$1 = ship.anti_ship_weapons;
-              return map(_pipe$1, weapon_card);
-            })()
           )
         ])
       )
@@ -5141,27 +5262,15 @@ function ship_card(ship) {
 }
 function total_damage_dealt(ships) {
   let _pipe = ships;
-  let _pipe$1 = map(
-    _pipe,
-    (ship) => {
-      let $ = ship_damage_dealt(ship);
-      if ($.isOk()) {
-        let damage_dealt = $[0];
-        return damage_dealt;
-      } else {
-        return 0;
-      }
-    }
-  );
-  return reduce(_pipe$1, (a, b) => {
+  let _pipe$1 = map(_pipe, ship_damage_dealt);
+  let _pipe$2 = reduce(_pipe$1, (a, b) => {
     return a + b;
   });
+  let _pipe$3 = unwrap(_pipe$2, 0);
+  return to_precision(_pipe$3, 2);
 }
 function player_box(player) {
-  let _block;
-  let _pipe = total_damage_dealt(player.ships);
-  _block = unwrap(_pipe, 0);
-  let total_damage = _block;
+  let total_damage = total_damage_dealt(player.ships);
   return div(
     toList([class$("box")]),
     toList([
@@ -5169,18 +5278,18 @@ function player_box(player) {
         toList([]),
         prepend(
           p(
-            toList([class$("title is-4")]),
+            toList([class$("title is-5")]),
             toList([
               text3(
-                player.name + " (Total Damage: " + float_to_string(
-                  total_damage
+                player.name + " (Dealt: " + float_to_string(total_damage) + " Taken: " + to_string(
+                  total_damage_taken(player.ships)
                 ) + ")"
               )
             ])
           ),
           (() => {
-            let _pipe$1 = player.ships;
-            return map(_pipe$1, ship_card);
+            let _pipe = player.ships;
+            return map(_pipe, ship_card);
           })()
         )
       )
@@ -5189,12 +5298,12 @@ function player_box(player) {
 }
 function team_box(team, team_name) {
   return div(
-    toList([class$("box")]),
+    toList([class$("column is-one-fifth")]),
     toList([
       div(
         toList([]),
         prepend(
-          p(toList([class$("title")]), toList([text3(team_name)])),
+          p(toList([class$("title is-3")]), toList([text3(team_name)])),
           (() => {
             let _pipe = team.players;
             return map(_pipe, player_box);
@@ -5207,7 +5316,19 @@ function team_box(team, team_name) {
 function view(state) {
   let team_a_box = team_box(state.report.team_a, "Team A");
   let team_b_box = team_box(state.report.team_b, "Team B");
-  return div(toList([class$("box")]), toList([team_a_box, team_b_box]));
+  let _block;
+  let $ = state.focus_ship;
+  if ($ instanceof Some) {
+    let ship = $[0];
+    _block = ship_detail(ship);
+  } else {
+    _block = div(toList([class$("column is-three-fifths")]), toList([]));
+  }
+  let ship_box = _block;
+  return div(
+    toList([class$("columns")]),
+    toList([ship_box, team_a_box, team_b_box])
+  );
 }
 
 // build/dev/javascript/xmlm/xmlm_ffi.mjs
@@ -10388,11 +10509,11 @@ function echo$inspectString(str) {
   new_str += '"';
   return new_str;
 }
-function echo$inspectDict(map5) {
+function echo$inspectDict(map6) {
   let body = "dict.from_list([";
   let first = true;
   let key_value_pairs = [];
-  map5.forEach((value, key) => {
+  map6.forEach((value, key) => {
     key_value_pairs.push([key, value]);
   });
   key_value_pairs.sort();
@@ -10520,10 +10641,22 @@ var ReportRead = class extends CustomType {
     this[0] = x0;
   }
 };
+var ReportReadFailed = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var ReportMsg = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
 function init2(_) {
   return [new AppState(new None(), new None()), none()];
 }
-function update2(state, msg) {
+function update3(state, msg) {
   if (msg instanceof UploadReport) {
     let read_effect = from(
       (dispatch) => {
@@ -10556,7 +10689,7 @@ function update2(state, msg) {
     }
     let next_state = _block;
     return [next_state, none()];
-  } else {
+  } else if (msg instanceof ReportReadFailed) {
     let error2 = msg[0];
     return [
       (() => {
@@ -10565,6 +10698,24 @@ function update2(state, msg) {
           _record.report,
           new Some(concat2(toList(["Failed to read report: ", error2])))
         );
+      })(),
+      none()
+    ];
+  } else {
+    let report_msg = msg[0];
+    let _block;
+    let $ = state.report;
+    if ($ instanceof Some) {
+      let report2 = $[0];
+      _block = new Some(update2(report2, report_msg));
+    } else {
+      _block = new None();
+    }
+    let report = _block;
+    return [
+      (() => {
+        let _record = state;
+        return new AppState(report, _record.error_message);
       })(),
       none()
     ];
@@ -10619,17 +10770,20 @@ function view2(state) {
     return upload_form(state.error_message);
   } else {
     let report = $[0];
-    return view(report);
+    let _pipe = view(report);
+    return map5(_pipe, (var0) => {
+      return new ReportMsg(var0);
+    });
   }
 }
 function main() {
-  let app = application(init2, update2, view2);
+  let app = application(init2, update3, view2);
   let $ = start3(app, "#app", void 0);
   if (!$.isOk()) {
     throw makeError(
       "let_assert",
       "neb_stats",
-      24,
+      26,
       "main",
       "Pattern match failed, no pattern matched the value.",
       { value: $ }
