@@ -191,7 +191,7 @@ fn parse_team_inner(
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_team_inner(parse_state, next_input_2)
     }
@@ -288,7 +288,7 @@ fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_player_inner(parse_state, next_input_2)
     }
@@ -443,7 +443,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_ship_inner(parse_state, next_input_2)
     }
@@ -550,12 +550,26 @@ fn parse_anti_ship_weapons_inner(
 }
 
 type ParseAntiShipWeaponState {
-  ParseAntiShipWeaponState(name: Option(String), damage_dealt: Option(Float))
+  ParseAntiShipWeaponState(
+    name: Option(String),
+    max_damage_per_round: Option(Int),
+    rounds_carried: Option(Int),
+    rounds_fired: Option(Int),
+    hits: Option(Int),
+    damage_dealt: Option(Float),
+  )
 }
 
 fn parse_anti_ship_weapon(input) {
   parse_anti_ship_weapon_inner(
-    ParseAntiShipWeaponState(name: None, damage_dealt: None),
+    ParseAntiShipWeaponState(
+      name: None,
+      damage_dealt: None,
+      max_damage_per_round: None,
+      rounds_carried: None,
+      rounds_fired: None,
+      hits: None,
+    ),
     input,
   )
 }
@@ -580,14 +594,68 @@ fn parse_anti_ship_weapon_inner(
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+    Ok(#(ElementStart(Tag(Name("", "MaxDamagePerShot"), _)), next_input)) -> {
+      use #(max_damage, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_weapon_inner(
+        ParseAntiShipWeaponState(
+          ..parse_state,
+          max_damage_per_round: Some(max_damage),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "RoundsCarried"), _)), next_input)) -> {
+      use #(rounds_carried, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_weapon_inner(
+        ParseAntiShipWeaponState(
+          ..parse_state,
+          rounds_carried: Some(rounds_carried),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
+      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_weapon_inner(
+        ParseAntiShipWeaponState(
+          ..parse_state,
+          rounds_fired: Some(rounds_fired),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "HitCount"), _)), next_input)) -> {
+      use #(hits, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_weapon_inner(
+        ParseAntiShipWeaponState(..parse_state, hits: Some(hits)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_anti_ship_weapon_inner(parse_state, next_input_2)
     }
     Ok(#(xmlm.ElementEnd, next_input)) -> {
       case parse_state {
-        ParseAntiShipWeaponState(name: Some(name), damage_dealt: Some(damage)) ->
-          Ok(#(AntiShipWeapon(name: name, damage_dealt: damage), next_input))
+        ParseAntiShipWeaponState(
+          name: Some(name),
+          damage_dealt: Some(damage),
+          max_damage_per_round: Some(max_damage),
+          rounds_carried: Some(rounds_carried),
+          rounds_fired: Some(rounds_fired),
+          hits: Some(hits),
+        ) ->
+          Ok(#(
+            AntiShipWeapon(
+              name: name,
+              damage_dealt: damage,
+              max_damage_per_round: max_damage,
+              rounds_carried: rounds_carried,
+              rounds_fired: rounds_fired,
+              hits: hits,
+            ),
+            next_input,
+          ))
         _ -> Error("Missing anti ship weapon data")
       }
     }
@@ -788,7 +856,7 @@ fn skip_tag(input) {
 fn skip_tag_inner(input, depth) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       //echo #("Skipping sub tag: ", tag)
       skip_tag_inner(next_input, depth + 1)
     }

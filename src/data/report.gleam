@@ -4,7 +4,14 @@ pub type TeamAOrB {
 }
 
 pub type AntiShipWeapon {
-  AntiShipWeapon(name: String, damage_dealt: Float)
+  AntiShipWeapon(
+    name: String,
+    max_damage_per_round: Int,
+    rounds_carried: Int,
+    rounds_fired: Int,
+    hits: Int,
+    damage_dealt: Float,
+  )
 }
 
 pub type Missile {
@@ -52,8 +59,22 @@ pub fn dummy_report() {
           class: "Class A",
           damage_taken: 80,
           anti_ship_weapons: [
-            AntiShipWeapon(name: "Cannon", damage_dealt: 100.0),
-            AntiShipWeapon(name: "Missile", damage_dealt: 200.0),
+            AntiShipWeapon(
+              name: "Cannon",
+              damage_dealt: 100.0,
+              max_damage_per_round: 50,
+              rounds_carried: 5,
+              rounds_fired: 3,
+              hits: 2,
+            ),
+            AntiShipWeapon(
+              name: "Missile",
+              damage_dealt: 200.0,
+              max_damage_per_round: 100,
+              rounds_carried: 10,
+              rounds_fired: 5,
+              hits: 3,
+            ),
           ],
           anti_ship_missiles: [
             Missile(
@@ -77,8 +98,22 @@ pub fn dummy_report() {
           class: "Class B",
           damage_taken: 80,
           anti_ship_weapons: [
-            AntiShipWeapon(name: "Torpedo", damage_dealt: 150.0),
-            AntiShipWeapon(name: "Rocket", damage_dealt: 250.0),
+            AntiShipWeapon(
+              name: "Torpedo",
+              damage_dealt: 150.0,
+              max_damage_per_round: 50,
+              rounds_carried: 5,
+              rounds_fired: 3,
+              hits: 2,
+            ),
+            AntiShipWeapon(
+              name: "Rocket",
+              damage_dealt: 250.0,
+              max_damage_per_round: 100,
+              rounds_carried: 10,
+              rounds_fired: 5,
+              hits: 3,
+            ),
           ],
           anti_ship_missiles: [
             Missile(

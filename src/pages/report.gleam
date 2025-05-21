@@ -44,7 +44,11 @@ pub fn update(state: PageState, msg: Msg) {
 
 fn ship_detail(ship: Ship) {
   let missile_cards = ship.anti_ship_missiles |> list.map(missile_card)
+  let missile_grid =
+    div([class("fixed-grid has-4-cols")], [div([class("grid")], missile_cards)])
   let gun_cards = ship.anti_ship_weapons |> list.map(weapon_card)
+  let gun_grid =
+    div([class("fixed-grid has-4-cols")], [div([class("grid")], gun_cards)])
   div([class("column is-three-fifths")], [
     div([], [
       p([class("title is-3")], [text(ship.name)]),
@@ -67,7 +71,8 @@ fn ship_detail(ship: Ship) {
           <> float.to_string(ship_missile_damage_dealt(ship)),
         ),
       ]),
-      ..{ list.append(missile_cards, gun_cards) }
+      missile_grid,
+      gun_grid,
     ]),
   ])
 }
@@ -129,16 +134,40 @@ fn ship_card(ship: Ship) {
 fn weapon_card(weapon: AntiShipWeapon) {
   let damage_string =
     weapon.damage_dealt |> float.to_precision(2) |> float.to_string
-  div([class("box")], [
+  let accuracy =
+    { int.to_float(weapon.hits) /. int.to_float(weapon.rounds_fired) }
+    |> float.to_precision(2)
+    |> float.to_string
+  let damage_per_shot =
+    weapon.damage_dealt /. int.to_float(weapon.rounds_fired)
+    |> float.to_precision(2)
+    |> float.to_string
+  div([class("cell")], [
     p([class("title is-5")], [text(weapon.name)]),
-    p([], [text("Damage Dealt: " <> damage_string)]),
+    p([], [
+      text("Damage Dealt: " <> damage_string),
+      br([]),
+      text(
+        "Max Damage Per Round: " <> int.to_string(weapon.max_damage_per_round),
+      ),
+      br([]),
+      text("Rounds Carried: " <> int.to_string(weapon.rounds_carried)),
+      br([]),
+      text("Rounds Fired: " <> int.to_string(weapon.rounds_fired)),
+      br([]),
+      text("Hits: " <> int.to_string(weapon.hits)),
+      br([]),
+      text("Accuracy: " <> accuracy),
+      br([]),
+      text("Damage Per Shot: " <> damage_per_shot),
+    ]),
   ])
 }
 
 fn missile_card(missile: Missile) {
   let damage_string =
     missile.damage_dealt |> float.to_precision(2) |> float.to_string
-  div([class("box")], [
+  div([class("cell")], [
     p([class("title is-5")], [text(missile.name)]),
     div([class("content")], [
       p([], [
