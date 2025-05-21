@@ -72,10 +72,11 @@ fn update(state, msg: Msg) {
 }
 
 fn view(state: AppState) {
-  case state.report {
+  let content = case state.report {
     None -> upload_form(state.error_message)
     Some(report) -> report_page.view(report) |> element.map(ReportMsg)
   }
+  div([class("container is-fluid")], [content])
 }
 
 fn upload_form(error_message) {

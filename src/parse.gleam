@@ -1,6 +1,6 @@
 import data/report.{
-  type AntiShipWeapon, type Player, type Ship, type Team, AntiShipWeapon, Player,
-  Report, Ship, Team,
+  type AntiShipWeapon, type Player, type Report, type Ship, type Team,
+  type TeamAOrB, AntiShipWeapon, Player, Report, Ship, Team, TeamA, TeamB,
 }
 import gleam/float
 import gleam/int
@@ -8,11 +8,6 @@ import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import gleam/string
 import xmlm.{type Input, ElementStart, Name, Tag}
-
-type TeamAOrB {
-  TeamA
-  TeamB
-}
 
 pub fn parse_report(content: String) {
   content
@@ -39,20 +34,82 @@ fn parse_report_xml(input) {
 }
 
 fn parse_report_element(input) {
+  parse_report_inner(
+    ParseReportState(winning_team: None, team_a: None, team_b: None),
+    input,
+  )
+}
+
+type ParseReportState {
+  ParseReportState(
+    winning_team: Option(TeamAOrB),
+    team_a: Option(Team),
+    team_b: Option(Team),
+  )
+}
+
+fn parse_report_inner(parse_state, input) -> Result(#(Report, Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "WinningTeam"), _)), next_input)) -> {
+      use #(winning_team_string, next_input) <- result.try(parse_string_element(
+        None,
+        next_input,
+      ))
+      case winning_team_string {
+        "TeamA" ->
+          parse_report_inner(
+            ParseReportState(..parse_state, winning_team: Some(TeamA)),
+            next_input,
+          )
+        "TeamB" ->
+          parse_report_inner(
+            ParseReportState(..parse_state, winning_team: Some(TeamB)),
+            next_input,
+          )
+        _ ->
+          Error(
+            string.concat(["Unexpected winning team: ", winning_team_string]),
+          )
+      }
+    }
     Ok(#(ElementStart(Tag(Name("", "Teams"), _)), next_input)) -> {
-      use #(team_a, team_b, next_input) <- result.map(parse_teams(next_input))
-      #(Report(team_a: team_a, team_b: team_b), next_input)
+      use #(team_a, team_b, next_input) <- result.try(parse_teams(next_input))
+      parse_report_inner(
+        ParseReportState(
+          ..parse_state,
+          team_a: Some(team_a),
+          team_b: Some(team_b),
+        ),
+        next_input,
+      )
     }
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
-      parse_report_element(next_input_2)
+      parse_report_inner(parse_state, next_input_2)
     }
-    Ok(#(xmlm.ElementEnd, _next_input)) -> Error("Unexpected end of XML")
+
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseReportState(
+          winning_team: Some(winning_team),
+          team_a: Some(team_a),
+          team_b: Some(team_b),
+        ) ->
+          Ok(#(
+            Report(winning_team: winning_team, team_a: team_a, team_b: team_b),
+            next_input,
+          ))
+        _ -> {
+          echo parse_state
+          Error("Missing report data")
+        }
+      }
+    }
     Ok(#(xmlm.Data(data), _)) ->
       Error(string.concat(["Unexpected data at report: ", data]))
-    Ok(#(xmlm.Dtd(_), next_input)) -> parse_report_element(next_input)
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_report_inner(parse_state, next_input)
   }
 }
 
@@ -269,6 +326,37 @@ fn parse_string_element(maybe_name, input) -> Result(#(String, Input), String) {
   }
 }
 
+fn parse_int_element(input) -> Result(#(Int, Input), String) {
+  case parse_string_element(None, input) {
+    Ok(#(string_value, next_input)) -> {
+      use value <- try(result.replace_error(
+        int.parse(string_value),
+        "Failed to parse float",
+      ))
+      Ok(#(value, next_input))
+    }
+    Error(e) -> Error(e)
+  }
+}
+
+fn parse_float_element(input) -> Result(#(Float, Input), String) {
+  case parse_string_element(None, input) {
+    Ok(#(string_value, next_input)) -> {
+      use value <- try(result.replace_error(
+        result.or(
+          float.parse(string_value),
+          result.then(int.parse(string_value), fn(int_damage) {
+            Ok(int.to_float(int_damage))
+          }),
+        ),
+        "Failed to parse float",
+      ))
+      Ok(#(value, next_input))
+    }
+    Error(e) -> Error(e)
+  }
+}
+
 fn parse_ships(input) {
   parse_ships_inner([], input)
 }
@@ -300,6 +388,7 @@ type ParseShipState {
     class: Option(String),
     damage_taken: Option(Int),
     anti_ship_weapons: List(AntiShipWeapon),
+    anti_ship_missiles: List(report.Missile),
   )
 }
 
@@ -310,6 +399,7 @@ fn parse_ship(input) {
       class: None,
       damage_taken: None,
       anti_ship_weapons: [],
+      anti_ship_missiles: [],
     ),
     input,
   )
@@ -333,23 +423,21 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
       )
     }
     Ok(#(ElementStart(Tag(Name("", "AntiShip"), _)), next_input)) -> {
-      echo "Parsing anti ship"
-
       use #(weapons, next_input) <- try(parse_anti_ship(next_input))
       parse_ship_inner(
         ParseShipState(..parse_state, anti_ship_weapons: weapons),
         next_input,
       )
     }
-    Ok(#(ElementStart(Tag(Name("", "TotalDamageReceived"), _)), next_input)) -> {
-      use #(string_damage, next_input_2) <- try(parse_string_element(
-        None,
+    Ok(#(ElementStart(Tag(Name("", "Strike"), _)), next_input)) -> {
+      use #(weapons, next_input) <- try(parse_strike(next_input))
+      parse_ship_inner(
+        ParseShipState(..parse_state, anti_ship_missiles: weapons),
         next_input,
-      ))
-      use damage <- try(result.replace_error(
-        int.parse(string_damage),
-        "Failed to parse damage",
-      ))
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalDamageReceived"), _)), next_input)) -> {
+      use #(damage, next_input_2) <- try(parse_int_element(next_input))
       parse_ship_inner(
         ParseShipState(..parse_state, damage_taken: Some(damage)),
         next_input_2,
@@ -366,6 +454,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
           class: Some(class),
           damage_taken: Some(damage),
           anti_ship_weapons: anti_ship_weapons,
+          anti_ship_missiles: anti_ship_missiles,
         ) -> {
           echo #("parsed ship: ", parse_state)
           Ok(#(
@@ -374,6 +463,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
               class: class,
               damage_taken: damage,
               anti_ship_weapons: anti_ship_weapons,
+              anti_ship_missiles: anti_ship_missiles,
             ),
             next_input,
           ))
@@ -484,19 +574,7 @@ fn parse_anti_ship_weapon_inner(
       )
     }
     Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
-      use #(string_damage, next_input_2) <- try(parse_string_element(
-        None,
-        next_input,
-      ))
-      use damage <- try(result.replace_error(
-        result.or(
-          float.parse(string_damage),
-          result.then(int.parse(string_damage), fn(int_damage) {
-            Ok(int.to_float(int_damage))
-          }),
-        ),
-        "Failed to parse damage: " <> string_damage,
-      ))
+      use #(damage, next_input_2) <- try(parse_float_element(next_input))
       parse_anti_ship_weapon_inner(
         ParseAntiShipWeaponState(..parse_state, damage_dealt: Some(damage)),
         next_input_2,
@@ -517,6 +595,189 @@ fn parse_anti_ship_weapon_inner(
       Error(string.concat(["Unexpected data at anti ship weapon: ", data]))
     Ok(#(xmlm.Dtd(_), next_input)) ->
       parse_anti_ship_weapon_inner(parse_state, next_input)
+  }
+}
+
+fn parse_strike(input) {
+  parse_strike_inner([], input)
+}
+
+fn parse_strike_inner(
+  missiles: List(report.Missile),
+  input: Input,
+) -> Result(#(List(report.Missile), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "Missiles"), _)), next_input)) -> {
+      use #(missiles, next_input_2) <- try(parse_missiles(next_input))
+      parse_strike_inner(missiles, next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_strike_inner(missiles, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(missiles, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at strike: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_strike_inner(missiles, next_input)
+  }
+}
+
+fn parse_missiles(input) {
+  parse_missiles_inner([], input)
+}
+
+fn parse_missiles_inner(
+  missiles: List(report.Missile),
+  input: Input,
+) -> Result(#(List(report.Missile), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "OffensiveMissileReport"), _)), next_input)) -> {
+      use #(missile, next_input_2) <- try(parse_missile(next_input))
+      parse_missiles_inner([missile, ..missiles], next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_missiles_inner(missiles, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(missiles, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at missiles: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_missiles_inner(missiles, next_input)
+  }
+}
+
+type ParseMissileState {
+  ParseMissileState(
+    name: Option(String),
+    damage_dealt: Option(Float),
+    carried: Option(Int),
+    expended: Option(Int),
+    hit: Option(Int),
+    miss: Option(Int),
+    soft_killed: Option(Int),
+    hard_killed: Option(Int),
+  )
+}
+
+fn parse_missile(input) {
+  parse_missile_inner(
+    ParseMissileState(
+      name: None,
+      damage_dealt: None,
+      carried: None,
+      expended: None,
+      hit: None,
+      miss: None,
+      soft_killed: None,
+      hard_killed: None,
+    ),
+    input,
+  )
+}
+
+fn parse_missile_inner(
+  parse_state,
+  input,
+) -> Result(#(report.Missile, Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "MissileName"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
+      use #(damage, next_input_2) <- try(parse_float_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, damage_dealt: Some(damage)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalCarried"), _)), next_input)) -> {
+      use #(carried, next_input_2) <- try(parse_int_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, carried: Some(carried)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalExpended"), _)), next_input)) -> {
+      use #(expended, next_input_2) <- try(parse_int_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, expended: Some(expended)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Hits"), _)), next_input)) -> {
+      use #(hit, next_input_2) <- try(parse_int_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, hit: Some(hit)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Misses"), _)), next_input)) -> {
+      use #(miss, next_input_2) <- try(parse_int_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, miss: Some(miss)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Softkills"), _)), next_input)) -> {
+      use #(soft_kill, next_input_2) <- try(parse_int_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, soft_killed: Some(soft_kill)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Hardkills"), _)), next_input)) -> {
+      use #(hard_kill, next_input_2) <- try(parse_int_element(next_input))
+      parse_missile_inner(
+        ParseMissileState(..parse_state, hard_killed: Some(hard_kill)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_missile_inner(parse_state, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseMissileState(
+          name: Some(name),
+          damage_dealt: Some(damage),
+          carried: Some(carried),
+          expended: Some(expended),
+          hit: Some(hit),
+          miss: Some(miss),
+          soft_killed: Some(soft_killed),
+          hard_killed: Some(hard_killed),
+        ) ->
+          Ok(#(
+            report.Missile(
+              name: name,
+              damage_dealt: damage,
+              carried: carried,
+              expended: expended,
+              hit: hit,
+              miss: miss,
+              soft_killed: soft_killed,
+              hard_killed: hard_killed,
+            ),
+            next_input,
+          ))
+        _ -> {
+          echo #("parse state: ", parse_state)
+          Error("Missing missile data ")
+        }
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at missile: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_missile_inner(parse_state, next_input)
   }
 }
 
