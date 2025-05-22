@@ -9884,6 +9884,12 @@ var ParseAntiShipWeaponState = class extends CustomType {
     this.damage_dealt = damage_dealt;
   }
 };
+var ParsedValueDecoder = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
 var ParseValueString = class extends CustomType {
 };
 var ParseValueInt = class extends CustomType {
@@ -9891,9 +9897,10 @@ var ParseValueInt = class extends CustomType {
 var ParseValueFloat = class extends CustomType {
 };
 var ParseValueList = class extends CustomType {
-  constructor(x0) {
+  constructor(x0, x1) {
     super();
     this[0] = x0;
+    this[1] = x1;
   }
 };
 var ParsedValueString = class extends CustomType {
@@ -10031,6 +10038,78 @@ function parse_float_element(input2) {
     return new Error2(e);
   }
 }
+function parse_missile_field_config() {
+  return from_list(
+    toList([
+      [new Some(new Name("", "MissileName")), new ParseValueString()],
+      [new Some(new Name("", "TotalDamageDone")), new ParseValueFloat()],
+      [new Some(new Name("", "TotalCarried")), new ParseValueInt()],
+      [new Some(new Name("", "TotalExpended")), new ParseValueInt()],
+      [new Some(new Name("", "Hits")), new ParseValueInt()],
+      [new Some(new Name("", "Misses")), new ParseValueInt()],
+      [new Some(new Name("", "Softkills")), new ParseValueInt()],
+      [new Some(new Name("", "Hardkills")), new ParseValueInt()]
+    ])
+  );
+}
+function missile_decoder(parsed_fields) {
+  let $ = map_get(parsed_fields, new Some(new Name("", "MissileName")));
+  let $1 = map_get(parsed_fields, new Some(new Name("", "TotalDamageDone")));
+  let $2 = map_get(parsed_fields, new Some(new Name("", "TotalCarried")));
+  let $3 = map_get(parsed_fields, new Some(new Name("", "TotalExpended")));
+  let $4 = map_get(parsed_fields, new Some(new Name("", "Hits")));
+  let $5 = map_get(parsed_fields, new Some(new Name("", "Misses")));
+  let $6 = map_get(parsed_fields, new Some(new Name("", "Softkills")));
+  let $7 = map_get(parsed_fields, new Some(new Name("", "Hardkills")));
+  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt && $6.isOk() && $6[0] instanceof ParsedValueInt && $7.isOk() && $7[0] instanceof ParsedValueInt) {
+    let name = $[0][0];
+    let damage_dealt = $1[0][0];
+    let carried = $2[0][0];
+    let expended = $3[0][0];
+    let hit = $4[0][0];
+    let miss = $5[0][0];
+    let soft_killed = $6[0][0];
+    let hard_killed = $7[0][0];
+    return new Ok(
+      new Missile(
+        name,
+        damage_dealt,
+        carried,
+        expended,
+        hit,
+        miss,
+        soft_killed,
+        hard_killed
+      )
+    );
+  } else {
+    return new Error2("Missing missile data");
+  }
+}
+function missiles_child_decoder(name, parsed_fields) {
+  if (name instanceof Name && name.uri === "" && name.local === "OffensiveMissileReport") {
+    return missile_decoder(parsed_fields);
+  } else {
+    let namespace = name.uri;
+    let item_name = name.local;
+    return new Error2(
+      "Unknown missile child element " + namespace + ":" + item_name
+    );
+  }
+}
+function parse_missiles_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Name("", "OffensiveMissileReport")),
+        new ParseValueList(
+          parse_missile_field_config(),
+          new ParsedValueDecoder(missiles_child_decoder)
+        )
+      ]
+    ])
+  );
+}
 function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
   while (true) {
     let field_config = loop$field_config;
@@ -10044,30 +10123,36 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
       let name = $[0][0][0].name;
       let next_input = $[0][1];
       let $1 = map_get(field_config, new Some(name));
-      if ($1.isOk() && $1[0] instanceof ParseValueList) {
+      if ($1.isOk() && $1[0] instanceof ParseValueList && $1[0][1] instanceof ParsedValueDecoder) {
         let sub_field_config = $1[0][0];
+        let decoder = $1[0][1][0];
         return try$(
           parse_map(sub_field_config, new_map(), next_input),
           (_use0) => {
             let sub_parsed_fields = _use0[0];
             let next_input_2 = _use0[1];
-            let next_parsed_fields = upsert(
-              parsed_fields,
-              new Some(name),
-              (maybe_existing_value) => {
-                if (maybe_existing_value instanceof Some && maybe_existing_value[0] instanceof ParsedValueList) {
-                  let existing_parsed_fields = maybe_existing_value[0][0];
-                  return new ParsedValueList(
-                    prepend(sub_parsed_fields, existing_parsed_fields)
-                  );
-                } else if (maybe_existing_value instanceof Some) {
-                  return new ParsedValueList(toList([sub_parsed_fields]));
-                } else {
-                  return new ParsedValueList(toList([sub_parsed_fields]));
-                }
+            return try$(
+              decoder(name, sub_parsed_fields),
+              (new_decoded_value) => {
+                let next_parsed_fields = upsert(
+                  parsed_fields,
+                  new Some(name),
+                  (maybe_existing_value) => {
+                    if (maybe_existing_value instanceof Some && maybe_existing_value[0] instanceof ParsedValueList) {
+                      let existing_parsed_fields = maybe_existing_value[0][0];
+                      return new ParsedValueList(
+                        prepend(new_decoded_value, existing_parsed_fields)
+                      );
+                    } else if (maybe_existing_value instanceof Some) {
+                      return new ParsedValueList(toList([new_decoded_value]));
+                    } else {
+                      return new ParsedValueList(toList([new_decoded_value]));
+                    }
+                  }
+                );
+                return parse_map(field_config, next_parsed_fields, next_input_2);
               }
             );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
           }
         );
       } else if ($1.isOk() && $1[0] instanceof ParseValueString) {
@@ -10137,64 +10222,29 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
     }
   }
 }
-function parse_missile(input2) {
-  let field_config = from_list(
-    toList([
-      [new Some(new Name("", "MissileName")), new ParseValueString()],
-      [new Some(new Name("", "TotalDamageDone")), new ParseValueFloat()],
-      [new Some(new Name("", "TotalCarried")), new ParseValueInt()],
-      [new Some(new Name("", "TotalExpended")), new ParseValueInt()],
-      [new Some(new Name("", "Hits")), new ParseValueInt()],
-      [new Some(new Name("", "Misses")), new ParseValueInt()],
-      [new Some(new Name("", "Softkills")), new ParseValueInt()],
-      [new Some(new Name("", "Hardkills")), new ParseValueInt()]
-    ])
+function parse_missiles(input2) {
+  let parse_result = parse_map(
+    parse_missiles_field_config(),
+    new_map(),
+    input2
   );
-  return try$(
-    parse_map(field_config, new_map(), input2),
-    (_use0) => {
-      let parsed_fields = _use0[0];
-      let next_input = _use0[1];
-      let $ = map_get(parsed_fields, new Some(new Name("", "MissileName")));
-      let $1 = map_get(
-        parsed_fields,
-        new Some(new Name("", "TotalDamageDone"))
-      );
-      let $2 = map_get(parsed_fields, new Some(new Name("", "TotalCarried")));
-      let $3 = map_get(parsed_fields, new Some(new Name("", "TotalExpended")));
-      let $4 = map_get(parsed_fields, new Some(new Name("", "Hits")));
-      let $5 = map_get(parsed_fields, new Some(new Name("", "Misses")));
-      let $6 = map_get(parsed_fields, new Some(new Name("", "Softkills")));
-      let $7 = map_get(parsed_fields, new Some(new Name("", "Hardkills")));
-      if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt && $6.isOk() && $6[0] instanceof ParsedValueInt && $7.isOk() && $7[0] instanceof ParsedValueInt) {
-        let name = $[0][0];
-        let damage_dealt = $1[0][0];
-        let carried = $2[0][0];
-        let expended = $3[0][0];
-        let hit = $4[0][0];
-        let miss = $5[0][0];
-        let soft_killed = $6[0][0];
-        let hard_killed = $7[0][0];
-        return new Ok(
-          [
-            new Missile(
-              name,
-              damage_dealt,
-              carried,
-              expended,
-              hit,
-              miss,
-              soft_killed,
-              hard_killed
-            ),
-            next_input
-          ]
-        );
-      } else {
-        return new Error2("Missing missile data");
-      }
+  if (parse_result.isOk()) {
+    let parsed_missiles = parse_result[0][0];
+    let next_input = parse_result[0][1];
+    let $ = map_get(
+      parsed_missiles,
+      new Some(new Name("", "OffensiveMissileReport"))
+    );
+    if ($.isOk() && $[0] instanceof ParsedValueList) {
+      let missiles = $[0][0];
+      return new Ok([missiles, next_input]);
+    } else {
+      return new Error2("Expected OffensiveMissileReport");
     }
-  );
+  } else {
+    let e = parse_result[0];
+    return new Error2(e);
+  }
 }
 function skip_tag_inner(loop$input, loop$depth) {
   while (true) {
@@ -11090,53 +11140,6 @@ function parse_anti_ship_inner(loop$anti_ship, loop$input) {
 }
 function parse_anti_ship(input2) {
   return parse_anti_ship_inner(toList([]), input2);
-}
-function parse_missiles_inner(loop$missiles, loop$input) {
-  while (true) {
-    let missiles = loop$missiles;
-    let input2 = loop$input;
-    let $ = signal(input2);
-    if (!$.isOk()) {
-      let e = $[0];
-      return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "OffensiveMissileReport") {
-      let next_input = $[0][1];
-      return try$(
-        parse_missile(next_input),
-        (_use0) => {
-          let missile = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_missiles_inner(
-            prepend(missile, missiles),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let next_input = $[0][1];
-      return try$(
-        skip_tag(next_input),
-        (next_input_2) => {
-          return parse_missiles_inner(missiles, next_input_2);
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      return new Ok([missiles, next_input]);
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      return new Error2(
-        concat2(toList(["Unexpected data at missiles: ", data]))
-      );
-    } else {
-      let next_input = $[0][1];
-      loop$missiles = missiles;
-      loop$input = next_input;
-    }
-  }
-}
-function parse_missiles(input2) {
-  return parse_missiles_inner(toList([]), input2);
 }
 function parse_strike_inner(loop$missiles, loop$input) {
   while (true) {

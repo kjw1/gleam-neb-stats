@@ -1243,27 +1243,15 @@ fn parse_strike_inner(
 }
 
 fn parse_missiles(input) {
-  parse_missiles_inner([], input)
-}
-
-fn parse_missiles_inner(
-  missiles: List(report.Missile),
-  input: Input,
-) -> Result(#(List(report.Missile), Input), String) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(Name("", "OffensiveMissileReport"), _)), next_input)) -> {
-      use #(missile, next_input_2) <- try(parse_missile(next_input))
-      parse_missiles_inner([missile, ..missiles], next_input_2)
+  let parse_result = parse_map(parse_missiles_field_config(), dict.new(), input)
+  case parse_result {
+    Ok(#(parsed_missiles, next_input)) -> {
+      case dict.get(parsed_missiles, Some(Name("", "OffensiveMissileReport"))) {
+        Ok(ParsedValueList(missiles)) -> Ok(#(missiles, next_input))
+        _ -> Error("Expected OffensiveMissileReport")
+      }
     }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
-      parse_missiles_inner(missiles, next_input_2)
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(missiles, next_input))
-    Ok(#(xmlm.Data(data), _)) ->
-      Error(string.concat(["Unexpected data at missiles: ", data]))
-    Ok(#(xmlm.Dtd(_), next_input)) -> parse_missiles_inner(missiles, next_input)
+    Error(e) -> Error(e)
   }
 }
 
@@ -1271,7 +1259,10 @@ fn parse_missiles_field_config() {
   dict.from_list([
     #(
       Some(Name("", "OffensiveMissileReport")),
-      ParseValueList(parse_missile_field_config()),
+      ParseValueList(
+        parse_missile_field_config(),
+        ParsedValueDecoder(missiles_child_decoder),
+      ),
     ),
   ])
 }
@@ -1289,23 +1280,18 @@ fn parse_missile_field_config() {
   ])
 }
 
-fn parse_missile(input) {
-  let field_config =
-    dict.from_list([
-      #(Some(Name("", "MissileName")), ParseValueString),
-      #(Some(Name("", "TotalDamageDone")), ParseValueFloat),
-      #(Some(Name("", "TotalCarried")), ParseValueInt),
-      #(Some(Name("", "TotalExpended")), ParseValueInt),
-      #(Some(Name("", "Hits")), ParseValueInt),
-      #(Some(Name("", "Misses")), ParseValueInt),
-      #(Some(Name("", "Softkills")), ParseValueInt),
-      #(Some(Name("", "Hardkills")), ParseValueInt),
-    ])
-  use #(parsed_fields, next_input) <- try(parse_map(
-    field_config,
-    dict.new(),
-    input,
-  ))
+fn missiles_child_decoder(name, parsed_fields) {
+  case name {
+    Name("", "OffensiveMissileReport") -> {
+      missile_decoder(parsed_fields)
+    }
+    Name(namespace, item_name) -> {
+      Error("Unknown missile child element " <> namespace <> ":" <> item_name)
+    }
+  }
+}
+
+fn missile_decoder(parsed_fields) {
   case
     dict.get(parsed_fields, Some(Name("", "MissileName"))),
     dict.get(parsed_fields, Some(Name("", "TotalDamageDone"))),
@@ -1325,18 +1311,15 @@ fn parse_missile(input) {
       Ok(ParsedValueInt(soft_killed)),
       Ok(ParsedValueInt(hard_killed))
     ->
-      Ok(#(
-        report.Missile(
-          name: name,
-          damage_dealt: damage_dealt,
-          carried: carried,
-          expended: expended,
-          hit: hit,
-          miss: miss,
-          soft_killed: soft_killed,
-          hard_killed: hard_killed,
-        ),
-        next_input,
+      Ok(report.Missile(
+        name: name,
+        damage_dealt: damage_dealt,
+        carried: carried,
+        expended: expended,
+        hit: hit,
+        miss: miss,
+        soft_killed: soft_killed,
+        hard_killed: hard_killed,
       ))
     _, _, _, _, _, _, _, _ -> Error("Missing missile data")
   }
@@ -1344,46 +1327,51 @@ fn parse_missile(input) {
 
 type ParsedValueDecoder(parsed_type) {
   ParsedValueDecoder(
-    fn(Dict(Option(xmlm.Name), ParsedValue)) -> Result(parsed_type, String),
+    fn(xmlm.Name, Dict(Option(xmlm.Name), ParsedValue(parsed_type))) ->
+      Result(parsed_type, String),
   )
 }
 
-type ParseValue {
+type ParseValue(contained) {
   ParseValueString
   ParseValueInt
   ParseValueFloat
-  ParseValueList(Dict(Option(xmlm.Name), ParseValue))
+  ParseValueList(
+    Dict(Option(xmlm.Name), ParseValue(contained)),
+    ParsedValueDecoder(contained),
+  )
 }
 
-type ParsedValue {
+type ParsedValue(contained) {
   ParsedValueString(String)
   ParsedValueInt(Int)
   ParsedValueFloat(Float)
-  ParsedValueList(List(Dict(Option(xmlm.Name), ParsedValue)))
+  ParsedValueList(List(contained))
 }
 
 fn parse_map(
-  field_config: Dict(Option(xmlm.Name), ParseValue),
-  parsed_fields: Dict(Option(xmlm.Name), ParsedValue),
+  field_config: Dict(Option(xmlm.Name), ParseValue(contained)),
+  parsed_fields: Dict(Option(xmlm.Name), ParsedValue(contained)),
   input: Input,
-) -> Result(#(Dict(Option(xmlm.Name), ParsedValue), Input), String) {
+) -> Result(#(Dict(Option(xmlm.Name), ParsedValue(contained)), Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(name, _)), next_input)) -> {
       case dict.get(field_config, Some(name)) {
-        Ok(ParseValueList(sub_field_config)) -> {
+        Ok(ParseValueList(sub_field_config, ParsedValueDecoder(decoder))) -> {
           use #(sub_parsed_fields, next_input_2) <- try(parse_map(
             sub_field_config,
             dict.new(),
             next_input,
           ))
+          use new_decoded_value <- try(decoder(name, sub_parsed_fields))
           let next_parsed_fields =
             dict.upsert(parsed_fields, Some(name), fn(maybe_existing_value) {
               case maybe_existing_value {
                 Some(ParsedValueList(existing_parsed_fields)) ->
-                  ParsedValueList([sub_parsed_fields, ..existing_parsed_fields])
-                Some(_) -> ParsedValueList([sub_parsed_fields])
-                None -> ParsedValueList([sub_parsed_fields])
+                  ParsedValueList([new_decoded_value, ..existing_parsed_fields])
+                Some(_) -> ParsedValueList([new_decoded_value])
+                None -> ParsedValueList([new_decoded_value])
               }
             })
           parse_map(field_config, next_parsed_fields, next_input_2)
