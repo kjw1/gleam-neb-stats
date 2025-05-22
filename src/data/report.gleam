@@ -7,11 +7,16 @@ pub type AntiShipWeapon {
   AntiShipWeapon(
     name: String,
     max_damage_per_round: Int,
-    rounds_carried: Int,
     rounds_fired: Int,
     hits: Int,
     damage_dealt: Float,
+    type_details: AntiShipWeaponTypeDetails,
   )
+}
+
+pub type AntiShipWeaponTypeDetails {
+  AntiShipWeaponGunDetails(rounds_carried: Int)
+  AntiShipWeaponContinuousDetails(shot_duration: Float, battle_short_shots: Int)
 }
 
 pub type Missile {
@@ -63,17 +68,20 @@ pub fn dummy_report() {
               name: "Cannon",
               damage_dealt: 100.0,
               max_damage_per_round: 50,
-              rounds_carried: 5,
               rounds_fired: 3,
               hits: 2,
+              type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
             ),
             AntiShipWeapon(
-              name: "Missile",
+              name: "Beam",
               damage_dealt: 200.0,
               max_damage_per_round: 100,
-              rounds_carried: 10,
               rounds_fired: 5,
               hits: 3,
+              type_details: AntiShipWeaponContinuousDetails(
+                shot_duration: 2.0,
+                battle_short_shots: 1,
+              ),
             ),
           ],
           anti_ship_missiles: [
@@ -102,17 +110,20 @@ pub fn dummy_report() {
               name: "Torpedo",
               damage_dealt: 150.0,
               max_damage_per_round: 50,
-              rounds_carried: 5,
               rounds_fired: 3,
               hits: 2,
+              type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
             ),
             AntiShipWeapon(
-              name: "Rocket",
+              name: "Plasma Beam",
               damage_dealt: 250.0,
               max_damage_per_round: 100,
-              rounds_carried: 10,
               rounds_fired: 5,
               hits: 3,
+              type_details: AntiShipWeaponContinuousDetails(
+                shot_duration: 2.0,
+                battle_short_shots: 1,
+              ),
             ),
           ],
           anti_ship_missiles: [

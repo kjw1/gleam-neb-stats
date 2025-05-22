@@ -272,83 +272,6 @@ function bitArrayPrintDeprecationWarning(name, message) {
   );
   isBitArrayDeprecationMessagePrinted[name] = true;
 }
-function bitArraySlice(bitArray, start4, end) {
-  end ??= bitArray.bitSize;
-  bitArrayValidateRange(bitArray, start4, end);
-  if (start4 === end) {
-    return new BitArray(new Uint8Array());
-  }
-  if (start4 === 0 && end === bitArray.bitSize) {
-    return bitArray;
-  }
-  start4 += bitArray.bitOffset;
-  end += bitArray.bitOffset;
-  const startByteIndex = Math.trunc(start4 / 8);
-  const endByteIndex = Math.trunc((end + 7) / 8);
-  const byteLength = endByteIndex - startByteIndex;
-  let buffer;
-  if (startByteIndex === 0 && byteLength === bitArray.rawBuffer.byteLength) {
-    buffer = bitArray.rawBuffer;
-  } else {
-    buffer = new Uint8Array(
-      bitArray.rawBuffer.buffer,
-      bitArray.rawBuffer.byteOffset + startByteIndex,
-      byteLength
-    );
-  }
-  return new BitArray(buffer, end - start4, start4 % 8);
-}
-function bitArraySliceToInt(bitArray, start4, end, isBigEndian, isSigned) {
-  bitArrayValidateRange(bitArray, start4, end);
-  if (start4 === end) {
-    return 0;
-  }
-  start4 += bitArray.bitOffset;
-  end += bitArray.bitOffset;
-  const isStartByteAligned = start4 % 8 === 0;
-  const isEndByteAligned = end % 8 === 0;
-  if (isStartByteAligned && isEndByteAligned) {
-    return intFromAlignedSlice(
-      bitArray,
-      start4 / 8,
-      end / 8,
-      isBigEndian,
-      isSigned
-    );
-  }
-  const size2 = end - start4;
-  const startByteIndex = Math.trunc(start4 / 8);
-  const endByteIndex = Math.trunc((end - 1) / 8);
-  if (startByteIndex == endByteIndex) {
-    const mask2 = 255 >> start4 % 8;
-    const unusedLowBitCount = (8 - end % 8) % 8;
-    let value = (bitArray.rawBuffer[startByteIndex] & mask2) >> unusedLowBitCount;
-    if (isSigned) {
-      const highBit = 2 ** (size2 - 1);
-      if (value >= highBit) {
-        value -= highBit * 2;
-      }
-    }
-    return value;
-  }
-  if (size2 <= 53) {
-    return intFromUnalignedSliceUsingNumber(
-      bitArray.rawBuffer,
-      start4,
-      end,
-      isBigEndian,
-      isSigned
-    );
-  } else {
-    return intFromUnalignedSliceUsingBigInt(
-      bitArray.rawBuffer,
-      start4,
-      end,
-      isBigEndian,
-      isSigned
-    );
-  }
-}
 function toBitArray(segments) {
   if (segments.length === 0) {
     return new BitArray(new Uint8Array());
@@ -450,200 +373,6 @@ function toBitArray(segments) {
     }
   }
   return new BitArray(buffer, bitSize);
-}
-function intFromAlignedSlice(bitArray, start4, end, isBigEndian, isSigned) {
-  const byteSize = end - start4;
-  if (byteSize <= 6) {
-    return intFromAlignedSliceUsingNumber(
-      bitArray.rawBuffer,
-      start4,
-      end,
-      isBigEndian,
-      isSigned
-    );
-  } else {
-    return intFromAlignedSliceUsingBigInt(
-      bitArray.rawBuffer,
-      start4,
-      end,
-      isBigEndian,
-      isSigned
-    );
-  }
-}
-function intFromAlignedSliceUsingNumber(buffer, start4, end, isBigEndian, isSigned) {
-  const byteSize = end - start4;
-  let value = 0;
-  if (isBigEndian) {
-    for (let i = start4; i < end; i++) {
-      value *= 256;
-      value += buffer[i];
-    }
-  } else {
-    for (let i = end - 1; i >= start4; i--) {
-      value *= 256;
-      value += buffer[i];
-    }
-  }
-  if (isSigned) {
-    const highBit = 2 ** (byteSize * 8 - 1);
-    if (value >= highBit) {
-      value -= highBit * 2;
-    }
-  }
-  return value;
-}
-function intFromAlignedSliceUsingBigInt(buffer, start4, end, isBigEndian, isSigned) {
-  const byteSize = end - start4;
-  let value = 0n;
-  if (isBigEndian) {
-    for (let i = start4; i < end; i++) {
-      value *= 256n;
-      value += BigInt(buffer[i]);
-    }
-  } else {
-    for (let i = end - 1; i >= start4; i--) {
-      value *= 256n;
-      value += BigInt(buffer[i]);
-    }
-  }
-  if (isSigned) {
-    const highBit = 1n << BigInt(byteSize * 8 - 1);
-    if (value >= highBit) {
-      value -= highBit * 2n;
-    }
-  }
-  return Number(value);
-}
-function intFromUnalignedSliceUsingNumber(buffer, start4, end, isBigEndian, isSigned) {
-  const isStartByteAligned = start4 % 8 === 0;
-  let size2 = end - start4;
-  let byteIndex = Math.trunc(start4 / 8);
-  let value = 0;
-  if (isBigEndian) {
-    if (!isStartByteAligned) {
-      const leadingBitsCount = 8 - start4 % 8;
-      value = buffer[byteIndex++] & (1 << leadingBitsCount) - 1;
-      size2 -= leadingBitsCount;
-    }
-    while (size2 >= 8) {
-      value *= 256;
-      value += buffer[byteIndex++];
-      size2 -= 8;
-    }
-    if (size2 > 0) {
-      value *= 2 ** size2;
-      value += buffer[byteIndex] >> 8 - size2;
-    }
-  } else {
-    if (isStartByteAligned) {
-      let size3 = end - start4;
-      let scale = 1;
-      while (size3 >= 8) {
-        value += buffer[byteIndex++] * scale;
-        scale *= 256;
-        size3 -= 8;
-      }
-      value += (buffer[byteIndex] >> 8 - size3) * scale;
-    } else {
-      const highBitsCount = start4 % 8;
-      const lowBitsCount = 8 - highBitsCount;
-      let size3 = end - start4;
-      let scale = 1;
-      while (size3 >= 8) {
-        const byte = buffer[byteIndex] << highBitsCount | buffer[byteIndex + 1] >> lowBitsCount;
-        value += (byte & 255) * scale;
-        scale *= 256;
-        size3 -= 8;
-        byteIndex++;
-      }
-      if (size3 > 0) {
-        const lowBitsUsed = size3 - Math.max(0, size3 - lowBitsCount);
-        let trailingByte = (buffer[byteIndex] & (1 << lowBitsCount) - 1) >> lowBitsCount - lowBitsUsed;
-        size3 -= lowBitsUsed;
-        if (size3 > 0) {
-          trailingByte *= 2 ** size3;
-          trailingByte += buffer[byteIndex + 1] >> 8 - size3;
-        }
-        value += trailingByte * scale;
-      }
-    }
-  }
-  if (isSigned) {
-    const highBit = 2 ** (end - start4 - 1);
-    if (value >= highBit) {
-      value -= highBit * 2;
-    }
-  }
-  return value;
-}
-function intFromUnalignedSliceUsingBigInt(buffer, start4, end, isBigEndian, isSigned) {
-  const isStartByteAligned = start4 % 8 === 0;
-  let size2 = end - start4;
-  let byteIndex = Math.trunc(start4 / 8);
-  let value = 0n;
-  if (isBigEndian) {
-    if (!isStartByteAligned) {
-      const leadingBitsCount = 8 - start4 % 8;
-      value = BigInt(buffer[byteIndex++] & (1 << leadingBitsCount) - 1);
-      size2 -= leadingBitsCount;
-    }
-    while (size2 >= 8) {
-      value *= 256n;
-      value += BigInt(buffer[byteIndex++]);
-      size2 -= 8;
-    }
-    if (size2 > 0) {
-      value <<= BigInt(size2);
-      value += BigInt(buffer[byteIndex] >> 8 - size2);
-    }
-  } else {
-    if (isStartByteAligned) {
-      let size3 = end - start4;
-      let shift = 0n;
-      while (size3 >= 8) {
-        value += BigInt(buffer[byteIndex++]) << shift;
-        shift += 8n;
-        size3 -= 8;
-      }
-      value += BigInt(buffer[byteIndex] >> 8 - size3) << shift;
-    } else {
-      const highBitsCount = start4 % 8;
-      const lowBitsCount = 8 - highBitsCount;
-      let size3 = end - start4;
-      let shift = 0n;
-      while (size3 >= 8) {
-        const byte = buffer[byteIndex] << highBitsCount | buffer[byteIndex + 1] >> lowBitsCount;
-        value += BigInt(byte & 255) << shift;
-        shift += 8n;
-        size3 -= 8;
-        byteIndex++;
-      }
-      if (size3 > 0) {
-        const lowBitsUsed = size3 - Math.max(0, size3 - lowBitsCount);
-        let trailingByte = (buffer[byteIndex] & (1 << lowBitsCount) - 1) >> lowBitsCount - lowBitsUsed;
-        size3 -= lowBitsUsed;
-        if (size3 > 0) {
-          trailingByte <<= size3;
-          trailingByte += buffer[byteIndex + 1] >> 8 - size3;
-        }
-        value += BigInt(trailingByte) << shift;
-      }
-    }
-  }
-  if (isSigned) {
-    const highBit = 2n ** BigInt(end - start4 - 1);
-    if (value >= highBit) {
-      value -= highBit * 2n;
-    }
-  }
-  return Number(value);
-}
-function bitArrayValidateRange(bitArray, start4, end) {
-  if (start4 < 0 || start4 > bitArray.bitSize || end < start4 || end > bitArray.bitSize) {
-    const msg = `Invalid bit array slice: start = ${start4}, end = ${end}, bit size = ${bitArray.bitSize}`;
-    throw new globalThis.Error(msg);
-  }
 }
 var utf8Encoder;
 function stringBits(string5) {
@@ -4927,6 +4656,12 @@ function map4(element3, f) {
 function text3(content) {
   return text2(content);
 }
+function h5(attrs, children) {
+  return element2("h5", attrs, children);
+}
+function h6(attrs, children) {
+  return element2("h6", attrs, children);
+}
 function div(attrs, children) {
   return element2("div", attrs, children);
 }
@@ -5114,14 +4849,27 @@ var TeamA = class extends CustomType {
 var TeamB = class extends CustomType {
 };
 var AntiShipWeapon = class extends CustomType {
-  constructor(name, max_damage_per_round, rounds_carried, rounds_fired, hits, damage_dealt) {
+  constructor(name, max_damage_per_round, rounds_fired, hits, damage_dealt, type_details) {
     super();
     this.name = name;
     this.max_damage_per_round = max_damage_per_round;
-    this.rounds_carried = rounds_carried;
     this.rounds_fired = rounds_fired;
     this.hits = hits;
     this.damage_dealt = damage_dealt;
+    this.type_details = type_details;
+  }
+};
+var AntiShipWeaponGunDetails = class extends CustomType {
+  constructor(rounds_carried) {
+    super();
+    this.rounds_carried = rounds_carried;
+  }
+};
+var AntiShipWeaponContinuousDetails = class extends CustomType {
+  constructor(shot_duration, battle_short_shots) {
+    super();
+    this.shot_duration = shot_duration;
+    this.battle_short_shots = battle_short_shots;
   }
 };
 var Missile = class extends CustomType {
@@ -5193,7 +4941,84 @@ function update2(state, msg) {
     return new PageState(_record.report, ship);
   }
 }
-function weapon_card(weapon) {
+function continuous_card(weapon, shot_duration, battle_short_shots) {
+  let _block;
+  let _pipe = weapon.damage_dealt;
+  let _pipe$1 = to_precision(_pipe, 2);
+  _block = float_to_string(_pipe$1);
+  let damage_string = _block;
+  let _block$1;
+  let _pipe$2 = divideFloat(
+    identity(weapon.hits),
+    identity(weapon.rounds_fired)
+  );
+  let _pipe$3 = to_precision(_pipe$2, 2);
+  _block$1 = float_to_string(_pipe$3);
+  let accuracy = _block$1;
+  let firing_duration = identity(weapon.rounds_fired) * shot_duration;
+  let _block$2;
+  let _pipe$4 = firing_duration;
+  let _pipe$5 = to_precision(_pipe$4, 2);
+  _block$2 = float_to_string(_pipe$5);
+  let firing_duration_string = _block$2;
+  let hit_duration = identity(weapon.hits) * shot_duration;
+  let _block$3;
+  let _pipe$6 = hit_duration;
+  let _pipe$7 = to_precision(_pipe$6, 2);
+  _block$3 = float_to_string(_pipe$7);
+  let hit_duration_string = _block$3;
+  let battle_short_duration = identity(battle_short_shots) * shot_duration;
+  let _block$4;
+  let _pipe$8 = battle_short_duration;
+  let _pipe$9 = to_precision(_pipe$8, 2);
+  _block$4 = float_to_string(_pipe$9);
+  let battle_short_duration_string = _block$4;
+  let _block$5;
+  let _pipe$10 = divideFloat(weapon.damage_dealt, firing_duration);
+  let _pipe$11 = to_precision(_pipe$10, 2);
+  _block$5 = float_to_string(_pipe$11);
+  let damage_per_second_fired = _block$5;
+  let _block$6;
+  let _pipe$12 = divideFloat(weapon.damage_dealt, hit_duration);
+  let _pipe$13 = to_precision(_pipe$12, 2);
+  _block$6 = float_to_string(_pipe$13);
+  let damage_per_second_hit_string = _block$6;
+  let _block$7;
+  let _pipe$14 = divideFloat(
+    identity(weapon.max_damage_per_round),
+    shot_duration
+  );
+  let _pipe$15 = to_precision(_pipe$14, 2);
+  _block$7 = float_to_string(_pipe$15);
+  let max_damage_per_second = _block$7;
+  return div(
+    toList([class$("cell")]),
+    toList([
+      p(toList([class$("title is-5")]), toList([text3(weapon.name)])),
+      p(
+        toList([]),
+        toList([
+          text3("Damage Dealt: " + damage_string),
+          br(toList([])),
+          text3("Max Damage Per Second: " + max_damage_per_second),
+          br(toList([])),
+          text3("Time Fired: " + firing_duration_string),
+          br(toList([])),
+          text3("Time on Target: " + hit_duration_string),
+          br(toList([])),
+          text3("Battle Short Duration: " + battle_short_duration_string),
+          br(toList([])),
+          text3("Accuracy: " + accuracy),
+          br(toList([])),
+          text3("Damage Per Second Fired: " + damage_per_second_fired),
+          br(toList([])),
+          text3("Damage Per Second Hit: " + damage_per_second_hit_string)
+        ])
+      )
+    ])
+  );
+}
+function gun_card(weapon, rounds_carried) {
   let _block;
   let _pipe = weapon.damage_dealt;
   let _pipe$1 = to_precision(_pipe, 2);
@@ -5215,6 +5040,11 @@ function weapon_card(weapon) {
   let _pipe$5 = to_precision(_pipe$4, 2);
   _block$2 = float_to_string(_pipe$5);
   let damage_per_shot = _block$2;
+  let _block$3;
+  let _pipe$6 = divideFloat(weapon.damage_dealt, identity(weapon.hits));
+  let _pipe$7 = to_precision(_pipe$6, 2);
+  _block$3 = float_to_string(_pipe$7);
+  let damage_per_hit = _block$3;
   return div(
     toList([class$("cell")]),
     toList([
@@ -5230,7 +5060,7 @@ function weapon_card(weapon) {
             )
           ),
           br(toList([])),
-          text3("Rounds Carried: " + to_string(weapon.rounds_carried)),
+          text3("Rounds Carried: " + to_string(rounds_carried)),
           br(toList([])),
           text3("Rounds Fired: " + to_string(weapon.rounds_fired)),
           br(toList([])),
@@ -5238,11 +5068,24 @@ function weapon_card(weapon) {
           br(toList([])),
           text3("Accuracy: " + accuracy),
           br(toList([])),
-          text3("Damage Per Shot: " + damage_per_shot)
+          text3("Damage Per Shot Fired: " + damage_per_shot),
+          br(toList([])),
+          text3("Damage Per Hit: " + damage_per_hit)
         ])
       )
     ])
   );
+}
+function weapon_card(weapon) {
+  let $ = weapon.type_details;
+  if ($ instanceof AntiShipWeaponGunDetails) {
+    let rounds_carried = $.rounds_carried;
+    return gun_card(weapon, rounds_carried);
+  } else {
+    let shot_duration = $.shot_duration;
+    let battle_short_shots = $.battle_short_shots;
+    return continuous_card(weapon, shot_duration, battle_short_shots);
+  }
 }
 function missile_card(missile) {
   let _block;
@@ -5365,8 +5208,10 @@ function ship_detail(ship) {
               )
             ])
           ),
-          missile_grid,
-          gun_grid
+          p(toList([class$("title is-4")]), toList([text3("Guns")])),
+          gun_grid,
+          p(toList([class$("title is-4")]), toList([text3("Missiles")])),
+          missile_grid
         ])
       )
     ])
@@ -5418,20 +5263,23 @@ function player_box(player) {
       div(
         toList([]),
         prepend(
-          p(
-            toList([class$("title is-5")]),
-            toList([
-              text3(
-                player.name + " (Dealt: " + float_to_string(total_damage) + " Taken: " + to_string(
-                  total_damage_taken(player.ships)
-                ) + ")"
-              )
-            ])
-          ),
-          (() => {
-            let _pipe = player.ships;
-            return map(_pipe, ship_card);
-          })()
+          h5(toList([class$("title is-5")]), toList([text3(player.name)])),
+          prepend(
+            h6(
+              toList([class$("subtitle is-6")]),
+              toList([
+                text3(
+                  " (Dealt: " + float_to_string(total_damage) + " Taken: " + to_string(
+                    total_damage_taken(player.ships)
+                  ) + ")"
+                )
+              ])
+            ),
+            (() => {
+              let _pipe = player.ships;
+              return map(_pipe, ship_card);
+            })()
+          )
         )
       )
     ])
@@ -9823,6 +9671,18 @@ var ParseShipState = class extends CustomType {
     this.anti_ship_missiles = anti_ship_missiles;
   }
 };
+var ParseAntiShipContinuousWeaponState = class extends CustomType {
+  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hits, shot_duration, battle_short_shots) {
+    super();
+    this.name = name;
+    this.damage_dealt = damage_dealt;
+    this.max_damage_per_round = max_damage_per_round;
+    this.rounds_fired = rounds_fired;
+    this.hits = hits;
+    this.shot_duration = shot_duration;
+    this.battle_short_shots = battle_short_shots;
+  }
+};
 var ParseAntiShipWeaponState = class extends CustomType {
   constructor(name, max_damage_per_round, rounds_carried, rounds_fired, hits, damage_dealt) {
     super();
@@ -9987,6 +9847,250 @@ function skip_tag_inner(loop$input, loop$depth) {
 }
 function skip_tag(input2) {
   return skip_tag_inner(input2, 0);
+}
+function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Name") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                new Some(name),
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hits,
+                _record.shot_duration,
+                _record.battle_short_shots
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalDamageDone") {
+      let next_input = $[0][1];
+      return try$(
+        parse_float_element(next_input),
+        (_use0) => {
+          let damage = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                _record.name,
+                new Some(damage),
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hits,
+                _record.shot_duration,
+                _record.battle_short_shots
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "MaxDamagePerShot") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let max_damage = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                _record.name,
+                _record.damage_dealt,
+                new Some(max_damage),
+                _record.rounds_fired,
+                _record.hits,
+                _record.shot_duration,
+                _record.battle_short_shots
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotsFired") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let rounds_fired = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                new Some(rounds_fired),
+                _record.hits,
+                _record.shot_duration,
+                _record.battle_short_shots
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "HitCount") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let hits = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                new Some(hits),
+                _record.shot_duration,
+                _record.battle_short_shots
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotDuration") {
+      let next_input = $[0][1];
+      return try$(
+        parse_float_element(next_input),
+        (_use0) => {
+          let shot_duration = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hits,
+                new Some(shot_duration),
+                _record.battle_short_shots
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotsFiredOverTimeLimit") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let battle_short_shots = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_continuous_weapon_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipContinuousWeaponState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hits,
+                _record.shot_duration,
+                new Some(battle_short_shots)
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_anti_ship_continuous_weapon_inner(
+            parse_state,
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseAntiShipContinuousWeaponState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hits instanceof Some && parse_state.shot_duration instanceof Some && parse_state.battle_short_shots instanceof Some) {
+        let name = parse_state.name[0];
+        let damage = parse_state.damage_dealt[0];
+        let max_damage = parse_state.max_damage_per_round[0];
+        let rounds_fired = parse_state.rounds_fired[0];
+        let hits = parse_state.hits[0];
+        let shot_duration = parse_state.shot_duration[0];
+        let battle_short_shots = parse_state.battle_short_shots[0];
+        return new Ok(
+          [
+            new AntiShipWeapon(
+              name,
+              max_damage,
+              rounds_fired,
+              hits,
+              damage,
+              new AntiShipWeaponContinuousDetails(
+                shot_duration,
+                battle_short_shots
+              )
+            ),
+            next_input
+          ]
+        );
+      } else {
+        return new Error2("Missing anti ship continuous weapon data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(
+          toList(["Unexpected data at anti ship continuous weapon: ", data])
+        )
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_anti_ship_continuous_weapon(input2) {
+  return parse_anti_ship_continuous_weapon_inner(
+    new ParseAntiShipContinuousWeaponState(
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None()
+    ),
+    input2
+  );
 }
 function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
   while (true) {
@@ -10156,10 +10260,10 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
             new AntiShipWeapon(
               name,
               max_damage,
-              rounds_carried,
               rounds_fired,
               hits,
-              damage
+              damage,
+              new AntiShipWeaponGunDetails(rounds_carried)
             ),
             next_input
           ]
@@ -10202,7 +10306,6 @@ function parse_anti_ship_weapons_inner(loop$anti_ship_weapons, loop$input) {
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "DiscreteWeaponReport") {
       let next_input = $[0][1];
-      echo("parsing weapon report", "src/parse.gleam", 535);
       return try$(
         parse_anti_ship_weapon(next_input),
         (_use0) => {
@@ -10214,10 +10317,21 @@ function parse_anti_ship_weapons_inner(loop$anti_ship_weapons, loop$input) {
           );
         }
       );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let tag = $[0][0][0];
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "ContinuousWeaponReport") {
       let next_input = $[0][1];
-      echo(["Skipping tag: ", tag], "src/parse.gleam", 540);
+      return try$(
+        parse_anti_ship_continuous_weapon(next_input),
+        (_use0) => {
+          let weapon = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_weapons_inner(
+            prepend(weapon, anti_ship_weapons),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
       return try$(
         skip_tag(next_input),
         (next_input_2) => {
@@ -10252,7 +10366,6 @@ function parse_anti_ship_inner(loop$anti_ship, loop$input) {
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Weapons") {
       let next_input = $[0][1];
-      echo("parsing weapons", "src/parse.gleam", 494);
       return try$(
         parse_anti_ship_weapons(next_input),
         (_use0) => {
@@ -10530,7 +10643,6 @@ function parse_missile_inner(loop$parse_state, loop$input) {
           ]
         );
       } else {
-        echo(["parse state: ", parse_state], "src/parse.gleam", 840);
         return new Error2("Missing missile data ");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -10785,7 +10897,6 @@ function parse_ship_inner(loop$parse_state, loop$input) {
         let damage = parse_state.damage_taken[0];
         let anti_ship_weapons = parse_state.anti_ship_weapons;
         let anti_ship_missiles = parse_state.anti_ship_missiles;
-        echo(["parsed ship: ", parse_state], "src/parse.gleam", 459);
         return new Ok(
           [
             new Ship(
@@ -10799,7 +10910,6 @@ function parse_ship_inner(loop$parse_state, loop$input) {
           ]
         );
       } else {
-        echo(["parse state: ", parse_state], "src/parse.gleam", 472);
         return new Error2("Missing ship data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -10923,7 +11033,6 @@ function parse_player_inner(loop$parse_state, loop$input) {
       if (parse_state instanceof ParsePlayerState && parse_state.name instanceof Some) {
         let name = parse_state.name[0];
         let ships = parse_state.ships;
-        echo(["parsed player: ", name], "src/parse.gleam", 298);
         return new Ok([new Player(name, ships), next_input]);
       } else {
         return new Error2("Missing player data");
@@ -11042,7 +11151,6 @@ function parse_team_inner(loop$parse_state, loop$input) {
         let players = parse_state.players;
         return new Ok([which_team, new Team(players), next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 203);
         return new Error2("Missing team data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -11070,7 +11178,6 @@ function parse_teams_inner(loop$parse_state, loop$input) {
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TeamReportOfShipBattleReportCraftBattleReport") {
       let next_input = $[0][1];
-      echo("Parsing team report", "src/parse.gleam", 137);
       return try$(
         parse_team(next_input),
         (_use0) => {
@@ -11104,7 +11211,6 @@ function parse_teams_inner(loop$parse_state, loop$input) {
         let team_b = parse_state.maybe_team_b[0];
         return new Ok([team_a, team_b, next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 155);
         return new Error2("Missing teams data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -11207,7 +11313,6 @@ function parse_report_inner(loop$parse_state, loop$input) {
         let team_b = parse_state.team_b[0];
         return new Ok([new Report(winning_team, team_a, team_b), next_input]);
       } else {
-        echo(parse_state, "src/parse.gleam", 104);
         return new Error2("Missing report data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -11264,142 +11369,6 @@ function parse_report(content) {
   let _pipe$1 = from_string(_pipe);
   let _pipe$2 = with_stripping(_pipe$1, true);
   return parse_report_xml(_pipe$2);
-}
-function echo(value, file, line) {
-  const grey = "\x1B[90m";
-  const reset_color = "\x1B[39m";
-  const file_line = `${file}:${line}`;
-  const string_value = echo$inspect(value);
-  if (globalThis.process?.stderr?.write) {
-    const string5 = `${grey}${file_line}${reset_color}
-${string_value}
-`;
-    process.stderr.write(string5);
-  } else if (globalThis.Deno) {
-    const string5 = `${grey}${file_line}${reset_color}
-${string_value}
-`;
-    globalThis.Deno.stderr.writeSync(new TextEncoder().encode(string5));
-  } else {
-    const string5 = `${file_line}
-${string_value}`;
-    globalThis.console.log(string5);
-  }
-  return value;
-}
-function echo$inspectString(str) {
-  let new_str = '"';
-  for (let i = 0; i < str.length; i++) {
-    let char = str[i];
-    if (char == "\n") new_str += "\\n";
-    else if (char == "\r") new_str += "\\r";
-    else if (char == "	") new_str += "\\t";
-    else if (char == "\f") new_str += "\\f";
-    else if (char == "\\") new_str += "\\\\";
-    else if (char == '"') new_str += '\\"';
-    else if (char < " " || char > "~" && char < "\xA0") {
-      new_str += "\\u{" + char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0") + "}";
-    } else {
-      new_str += char;
-    }
-  }
-  new_str += '"';
-  return new_str;
-}
-function echo$inspectDict(map6) {
-  let body = "dict.from_list([";
-  let first = true;
-  let key_value_pairs = [];
-  map6.forEach((value, key) => {
-    key_value_pairs.push([key, value]);
-  });
-  key_value_pairs.sort();
-  key_value_pairs.forEach(([key, value]) => {
-    if (!first) body = body + ", ";
-    body = body + "#(" + echo$inspect(key) + ", " + echo$inspect(value) + ")";
-    first = false;
-  });
-  return body + "])";
-}
-function echo$inspectCustomType(record) {
-  const props = globalThis.Object.keys(record).map((label) => {
-    const value = echo$inspect(record[label]);
-    return isNaN(parseInt(label)) ? `${label}: ${value}` : value;
-  }).join(", ");
-  return props ? `${record.constructor.name}(${props})` : record.constructor.name;
-}
-function echo$inspectObject(v) {
-  const name = Object.getPrototypeOf(v)?.constructor?.name || "Object";
-  const props = [];
-  for (const k of Object.keys(v)) {
-    props.push(`${echo$inspect(k)}: ${echo$inspect(v[k])}`);
-  }
-  const body = props.length ? " " + props.join(", ") + " " : "";
-  const head = name === "Object" ? "" : name + " ";
-  return `//js(${head}{${body}})`;
-}
-function echo$inspect(v) {
-  const t = typeof v;
-  if (v === true) return "True";
-  if (v === false) return "False";
-  if (v === null) return "//js(null)";
-  if (v === void 0) return "Nil";
-  if (t === "string") return echo$inspectString(v);
-  if (t === "bigint" || t === "number") return v.toString();
-  if (globalThis.Array.isArray(v))
-    return `#(${v.map(echo$inspect).join(", ")})`;
-  if (v instanceof List)
-    return `[${v.toArray().map(echo$inspect).join(", ")}]`;
-  if (v instanceof UtfCodepoint)
-    return `//utfcodepoint(${String.fromCodePoint(v.value)})`;
-  if (v instanceof BitArray) return echo$inspectBitArray(v);
-  if (v instanceof CustomType) return echo$inspectCustomType(v);
-  if (echo$isDict(v)) return echo$inspectDict(v);
-  if (v instanceof Set)
-    return `//js(Set(${[...v].map(echo$inspect).join(", ")}))`;
-  if (v instanceof RegExp) return `//js(${v})`;
-  if (v instanceof Date) return `//js(Date("${v.toISOString()}"))`;
-  if (v instanceof Function) {
-    const args = [];
-    for (const i of Array(v.length).keys())
-      args.push(String.fromCharCode(i + 97));
-    return `//fn(${args.join(", ")}) { ... }`;
-  }
-  return echo$inspectObject(v);
-}
-function echo$inspectBitArray(bitArray) {
-  let endOfAlignedBytes = bitArray.bitOffset + 8 * Math.trunc(bitArray.bitSize / 8);
-  let alignedBytes = bitArraySlice(
-    bitArray,
-    bitArray.bitOffset,
-    endOfAlignedBytes
-  );
-  let remainingUnalignedBits = bitArray.bitSize % 8;
-  if (remainingUnalignedBits > 0) {
-    let remainingBits = bitArraySliceToInt(
-      bitArray,
-      endOfAlignedBytes,
-      bitArray.bitSize,
-      false,
-      false
-    );
-    let alignedBytesArray = Array.from(alignedBytes.rawBuffer);
-    let suffix = `${remainingBits}:size(${remainingUnalignedBits})`;
-    if (alignedBytesArray.length === 0) {
-      return `<<${suffix}>>`;
-    } else {
-      return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}, ${suffix}>>`;
-    }
-  } else {
-    return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}>>`;
-  }
-}
-function echo$isDict(value) {
-  try {
-    return value instanceof Dict;
-  } catch {
-    return false;
-  }
 }
 
 // build/dev/javascript/neb_stats/read_report_ffi.mjs
