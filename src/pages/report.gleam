@@ -12,16 +12,22 @@ import lustre/attribute.{class}
 import lustre/element/html.{br, div, h5, h6, p, text}
 import lustre/event
 
+pub type DetailFocus {
+  ShipDetail(Ship)
+  CraftDetail(Craft)
+}
+
 pub type PageState {
-  PageState(report: Report, focus_ship: Option(Ship))
+  PageState(report: Report, detail_focus: Option(DetailFocus))
 }
 
 pub type Msg {
-  FocusShip(Option(Ship))
+  FocusShip(Ship)
+  FocusCraft(Craft)
 }
 
 pub fn init(report: Report) {
-  PageState(report: report, focus_ship: None)
+  PageState(report: report, detail_focus: None)
 }
 
 pub fn view(state: PageState) {
@@ -29,8 +35,9 @@ pub fn view(state: PageState) {
     team_box(state.report.team_a, TeamA, state.report.winning_team)
   let team_b_box =
     team_box(state.report.team_b, TeamB, state.report.winning_team)
-  let ship_box = case state.focus_ship {
-    Some(ship) -> ship_detail(ship)
+  let ship_box = case state.detail_focus {
+    Some(ShipDetail(ship)) -> ship_detail(ship)
+    Some(CraftDetail(craft)) -> craft_detail(craft)
     None -> div([class("column is-three-fifths")], [])
   }
 
@@ -39,8 +46,34 @@ pub fn view(state: PageState) {
 
 pub fn update(state: PageState, msg: Msg) {
   case msg {
-    FocusShip(ship) -> PageState(..state, focus_ship: ship)
+    FocusShip(ship) -> PageState(..state, detail_focus: Some(ShipDetail(ship)))
+    FocusCraft(craft) ->
+      PageState(..state, detail_focus: Some(CraftDetail(craft)))
   }
+}
+
+fn craft_detail(craft: Craft) {
+  let weapon_cards = craft.anti_ship_weapons |> list.map(weapon_card)
+  let weapon_grid =
+    div([class("fixed-grid has-4-cols")], [div([class("grid")], weapon_cards)])
+  div([class("column is-three-fifths")], [
+    div([], [
+      p([class("title is-3")], [text(craft.name)]),
+      div([class("content")], [
+        text("Class: " <> craft.class),
+        br([]),
+        text("Damage Dealt: " <> float.to_string(craft_damage_dealt(craft))),
+        br([]),
+        text("Carried: " <> int.to_string(craft.carried)),
+        br([]),
+        text("Lost: " <> int.to_string(craft.lost)),
+        br([]),
+        text("Sorties: " <> int.to_string(craft.sorties)),
+        br([]),
+        weapon_grid,
+      ]),
+    ]),
+  ])
 }
 
 fn ship_detail(ship: Ship) {
@@ -121,7 +154,7 @@ fn player_box(player: Player) {
 
 fn ship_card(ship: Ship) {
   let damage_dealt = ship_damage_dealt(ship)
-  div([event.on_click(FocusShip(Some(ship))), class("card")], [
+  div([event.on_click(FocusShip(ship)), class("card")], [
     div([class("card-header")], [
       p([class("card-header-title")], [text(ship.name)]),
     ]),
@@ -139,7 +172,7 @@ fn ship_card(ship: Ship) {
 
 fn craft_card(craft: Craft) {
   let damage_dealt = craft_damage_dealt(craft)
-  div([class("card")], [
+  div([event.on_click(FocusCraft(craft)), class("card")], [
     div([class("card-header")], [
       p([class("card-header-title")], [text(craft.name)]),
     ]),

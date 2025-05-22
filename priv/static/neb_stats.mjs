@@ -4939,14 +4939,32 @@ var Report = class extends CustomType {
 };
 
 // build/dev/javascript/neb_stats/pages/report.mjs
+var ShipDetail = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var CraftDetail = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
 var PageState = class extends CustomType {
-  constructor(report, focus_ship) {
+  constructor(report, detail_focus) {
     super();
     this.report = report;
-    this.focus_ship = focus_ship;
+    this.detail_focus = detail_focus;
   }
 };
 var FocusShip = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var FocusCraft = class extends CustomType {
   constructor(x0) {
     super();
     this[0] = x0;
@@ -4956,10 +4974,14 @@ function init(report) {
   return new PageState(report, new None());
 }
 function update2(state, msg) {
-  {
+  if (msg instanceof FocusShip) {
     let ship = msg[0];
     let _record = state;
-    return new PageState(_record.report, ship);
+    return new PageState(_record.report, new Some(new ShipDetail(ship)));
+  } else {
+    let craft = msg[0];
+    let _record = state;
+    return new PageState(_record.report, new Some(new CraftDetail(craft)));
   }
 }
 function continuous_card(weapon, shot_duration, battle_short_shots) {
@@ -5189,10 +5211,49 @@ function craft_damage_dealt(craft) {
   let _pipe$3 = unwrap(_pipe$2, 0);
   return to_precision(_pipe$3, 2);
 }
+function craft_detail(craft) {
+  let _block;
+  let _pipe = craft.anti_ship_weapons;
+  _block = map(_pipe, weapon_card);
+  let weapon_cards = _block;
+  let weapon_grid = div(
+    toList([class$("fixed-grid has-4-cols")]),
+    toList([div(toList([class$("grid")]), weapon_cards)])
+  );
+  return div(
+    toList([class$("column is-three-fifths")]),
+    toList([
+      div(
+        toList([]),
+        toList([
+          p(toList([class$("title is-3")]), toList([text3(craft.name)])),
+          div(
+            toList([class$("content")]),
+            toList([
+              text3("Class: " + craft.class),
+              br(toList([])),
+              text3(
+                "Damage Dealt: " + float_to_string(craft_damage_dealt(craft))
+              ),
+              br(toList([])),
+              text3("Carried: " + to_string(craft.carried)),
+              br(toList([])),
+              text3("Lost: " + to_string(craft.lost)),
+              br(toList([])),
+              text3("Sorties: " + to_string(craft.sorties)),
+              br(toList([])),
+              weapon_grid
+            ])
+          )
+        ])
+      )
+    ])
+  );
+}
 function craft_card(craft) {
   let damage_dealt = craft_damage_dealt(craft);
   return div(
-    toList([class$("card")]),
+    toList([on_click(new FocusCraft(craft)), class$("card")]),
     toList([
       div(
         toList([class$("card-header")]),
@@ -5287,7 +5348,7 @@ function ship_detail(ship) {
 function ship_card(ship) {
   let damage_dealt = ship_damage_dealt(ship);
   return div(
-    toList([on_click(new FocusShip(new Some(ship))), class$("card")]),
+    toList([on_click(new FocusShip(ship)), class$("card")]),
     toList([
       div(
         toList([class$("card-header")]),
@@ -5405,10 +5466,13 @@ function view(state) {
     state.report.winning_team
   );
   let _block;
-  let $ = state.focus_ship;
-  if ($ instanceof Some) {
-    let ship = $[0];
+  let $ = state.detail_focus;
+  if ($ instanceof Some && $[0] instanceof ShipDetail) {
+    let ship = $[0][0];
     _block = ship_detail(ship);
+  } else if ($ instanceof Some && $[0] instanceof CraftDetail) {
+    let craft = $[0][0];
+    _block = craft_detail(craft);
   } else {
     _block = div(toList([class$("column is-three-fifths")]), toList([]));
   }
