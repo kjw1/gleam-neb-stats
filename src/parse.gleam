@@ -4,6 +4,7 @@ import data/report.{
   AntiShipWeaponContinuousDetails, AntiShipWeaponGunDetails, Craft, Player,
   Report, Ship, Team, TeamA, TeamB,
 }
+import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
 import gleam/option.{type Option, None, Some}
@@ -1266,135 +1267,163 @@ fn parse_missiles_inner(
   }
 }
 
-type ParseMissileState {
-  ParseMissileState(
-    name: Option(String),
-    damage_dealt: Option(Float),
-    carried: Option(Int),
-    expended: Option(Int),
-    hit: Option(Int),
-    miss: Option(Int),
-    soft_killed: Option(Int),
-    hard_killed: Option(Int),
-  )
+fn parse_missiles_field_config() {
+  dict.from_list([
+    #(
+      Some(Name("", "OffensiveMissileReport")),
+      ParseValueList(parse_missile_field_config()),
+    ),
+  ])
+}
+
+fn parse_missile_field_config() {
+  dict.from_list([
+    #(Some(Name("", "MissileName")), ParseValueString),
+    #(Some(Name("", "TotalDamageDone")), ParseValueFloat),
+    #(Some(Name("", "TotalCarried")), ParseValueInt),
+    #(Some(Name("", "TotalExpended")), ParseValueInt),
+    #(Some(Name("", "Hits")), ParseValueInt),
+    #(Some(Name("", "Misses")), ParseValueInt),
+    #(Some(Name("", "Softkills")), ParseValueInt),
+    #(Some(Name("", "Hardkills")), ParseValueInt),
+  ])
 }
 
 fn parse_missile(input) {
-  parse_missile_inner(
-    ParseMissileState(
-      name: None,
-      damage_dealt: None,
-      carried: None,
-      expended: None,
-      hit: None,
-      miss: None,
-      soft_killed: None,
-      hard_killed: None,
-    ),
+  let field_config =
+    dict.from_list([
+      #(Some(Name("", "MissileName")), ParseValueString),
+      #(Some(Name("", "TotalDamageDone")), ParseValueFloat),
+      #(Some(Name("", "TotalCarried")), ParseValueInt),
+      #(Some(Name("", "TotalExpended")), ParseValueInt),
+      #(Some(Name("", "Hits")), ParseValueInt),
+      #(Some(Name("", "Misses")), ParseValueInt),
+      #(Some(Name("", "Softkills")), ParseValueInt),
+      #(Some(Name("", "Hardkills")), ParseValueInt),
+    ])
+  use #(parsed_fields, next_input) <- try(parse_map(
+    field_config,
+    dict.new(),
     input,
+  ))
+  case
+    dict.get(parsed_fields, Some(Name("", "MissileName"))),
+    dict.get(parsed_fields, Some(Name("", "TotalDamageDone"))),
+    dict.get(parsed_fields, Some(Name("", "TotalCarried"))),
+    dict.get(parsed_fields, Some(Name("", "TotalExpended"))),
+    dict.get(parsed_fields, Some(Name("", "Hits"))),
+    dict.get(parsed_fields, Some(Name("", "Misses"))),
+    dict.get(parsed_fields, Some(Name("", "Softkills"))),
+    dict.get(parsed_fields, Some(Name("", "Hardkills")))
+  {
+    Ok(ParsedValueString(name)),
+      Ok(ParsedValueFloat(damage_dealt)),
+      Ok(ParsedValueInt(carried)),
+      Ok(ParsedValueInt(expended)),
+      Ok(ParsedValueInt(hit)),
+      Ok(ParsedValueInt(miss)),
+      Ok(ParsedValueInt(soft_killed)),
+      Ok(ParsedValueInt(hard_killed))
+    ->
+      Ok(#(
+        report.Missile(
+          name: name,
+          damage_dealt: damage_dealt,
+          carried: carried,
+          expended: expended,
+          hit: hit,
+          miss: miss,
+          soft_killed: soft_killed,
+          hard_killed: hard_killed,
+        ),
+        next_input,
+      ))
+    _, _, _, _, _, _, _, _ -> Error("Missing missile data")
+  }
+}
+
+type ParsedValueDecoder(parsed_type) {
+  ParsedValueDecoder(
+    fn(Dict(Option(xmlm.Name), ParsedValue)) -> Result(parsed_type, String),
   )
 }
 
-fn parse_missile_inner(
-  parse_state,
-  input,
-) -> Result(#(report.Missile, Input), String) {
+type ParseValue {
+  ParseValueString
+  ParseValueInt
+  ParseValueFloat
+  ParseValueList(Dict(Option(xmlm.Name), ParseValue))
+}
+
+type ParsedValue {
+  ParsedValueString(String)
+  ParsedValueInt(Int)
+  ParsedValueFloat(Float)
+  ParsedValueList(List(Dict(Option(xmlm.Name), ParsedValue)))
+}
+
+fn parse_map(
+  field_config: Dict(Option(xmlm.Name), ParseValue),
+  parsed_fields: Dict(Option(xmlm.Name), ParsedValue),
+  input: Input,
+) -> Result(#(Dict(Option(xmlm.Name), ParsedValue), Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(Name("", "MissileName"), _)), next_input)) -> {
-      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, name: Some(name)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
-      use #(damage, next_input_2) <- try(parse_float_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, damage_dealt: Some(damage)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "TotalCarried"), _)), next_input)) -> {
-      use #(carried, next_input_2) <- try(parse_int_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, carried: Some(carried)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "TotalExpended"), _)), next_input)) -> {
-      use #(expended, next_input_2) <- try(parse_int_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, expended: Some(expended)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "Hits"), _)), next_input)) -> {
-      use #(hit, next_input_2) <- try(parse_int_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, hit: Some(hit)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "Misses"), _)), next_input)) -> {
-      use #(miss, next_input_2) <- try(parse_int_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, miss: Some(miss)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "Softkills"), _)), next_input)) -> {
-      use #(soft_kill, next_input_2) <- try(parse_int_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, soft_killed: Some(soft_kill)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "Hardkills"), _)), next_input)) -> {
-      use #(hard_kill, next_input_2) <- try(parse_int_element(next_input))
-      parse_missile_inner(
-        ParseMissileState(..parse_state, hard_killed: Some(hard_kill)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
-      parse_missile_inner(parse_state, next_input_2)
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) -> {
-      case parse_state {
-        ParseMissileState(
-          name: Some(name),
-          damage_dealt: Some(damage),
-          carried: Some(carried),
-          expended: Some(expended),
-          hit: Some(hit),
-          miss: Some(miss),
-          soft_killed: Some(soft_killed),
-          hard_killed: Some(hard_killed),
-        ) ->
-          Ok(#(
-            report.Missile(
-              name: name,
-              damage_dealt: damage,
-              carried: carried,
-              expended: expended,
-              hit: hit,
-              miss: miss,
-              soft_killed: soft_killed,
-              hard_killed: hard_killed,
-            ),
+    Ok(#(ElementStart(Tag(name, _)), next_input)) -> {
+      case dict.get(field_config, Some(name)) {
+        Ok(ParseValueList(sub_field_config)) -> {
+          use #(sub_parsed_fields, next_input_2) <- try(parse_map(
+            sub_field_config,
+            dict.new(),
             next_input,
           ))
-        _ -> {
-          Error("Missing missile data ")
+          let next_parsed_fields =
+            dict.upsert(parsed_fields, Some(name), fn(maybe_existing_value) {
+              case maybe_existing_value {
+                Some(ParsedValueList(existing_parsed_fields)) ->
+                  ParsedValueList([sub_parsed_fields, ..existing_parsed_fields])
+                Some(_) -> ParsedValueList([sub_parsed_fields])
+                None -> ParsedValueList([sub_parsed_fields])
+              }
+            })
+          parse_map(field_config, next_parsed_fields, next_input_2)
         }
+        Ok(ParseValueString) -> {
+          use #(value, next_input_2) <- try(parse_string_element(
+            None,
+            next_input,
+          ))
+          let next_parsed_fields =
+            dict.insert(parsed_fields, Some(name), ParsedValueString(value))
+          parse_map(field_config, next_parsed_fields, next_input_2)
+        }
+        Ok(ParseValueInt) -> {
+          use #(value, next_input_2) <- try(parse_int_element(next_input))
+          let next_parsed_fields =
+            dict.insert(parsed_fields, Some(name), ParsedValueInt(value))
+          parse_map(field_config, next_parsed_fields, next_input_2)
+        }
+        Ok(ParseValueFloat) -> {
+          use #(value, next_input_2) <- try(parse_float_element(next_input))
+          let next_parsed_fields =
+            dict.insert(parsed_fields, Some(name), ParsedValueFloat(value))
+          parse_map(field_config, next_parsed_fields, next_input_2)
+        }
+        Error(_) -> Error("Unknown field type")
       }
     }
-    Ok(#(xmlm.Data(data), _)) ->
-      Error(string.concat(["Unexpected data at missile: ", data]))
-    Ok(#(xmlm.Dtd(_), next_input)) ->
-      parse_missile_inner(parse_state, next_input)
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      Ok(#(parsed_fields, next_input))
+    }
+    Ok(#(xmlm.Data(data), next_input)) -> {
+      let next_parsed_fields =
+        dict.insert(parsed_fields, None, ParsedValueString(data))
+      parse_map(field_config, next_parsed_fields, next_input)
+    }
+
+    Ok(#(xmlm.Dtd(_), next_input)) -> {
+      parse_map(field_config, parsed_fields, next_input)
+    }
   }
 }
 
