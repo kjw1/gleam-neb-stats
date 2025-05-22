@@ -958,143 +958,65 @@ fn parse_anti_ship_weapons_inner(
   }
 }
 
-type ParseAntiShipContinuousWeaponState {
-  ParseAntiShipContinuousWeaponState(
-    name: Option(String),
-    damage_dealt: Option(Float),
-    max_damage_per_round: Option(Int),
-    rounds_fired: Option(Int),
-    hits: Option(Int),
-    shot_duration: Option(Float),
-    battle_short_shots: Option(Int),
-  )
-}
-
 fn parse_anti_ship_continuous_weapon(input) {
-  parse_anti_ship_continuous_weapon_inner(
-    ParseAntiShipContinuousWeaponState(
-      name: None,
-      damage_dealt: None,
-      max_damage_per_round: None,
-      rounds_fired: None,
-      hits: None,
-      shot_duration: None,
-      battle_short_shots: None,
-    ),
-    input,
-  )
+  let parse_result =
+    parse_map(anti_ship_continuous_field_config(), dict.new(), input)
+  case parse_result {
+    Ok(#(parsed_fields, next_input)) -> {
+      use weapon <- try(anti_ship_continuous_weapon_decoder(parsed_fields))
+      Ok(#(weapon, next_input))
+    }
+    Error(e) -> Error(e)
+  }
 }
 
-fn parse_anti_ship_continuous_weapon_inner(
-  parse_state: ParseAntiShipContinuousWeaponState,
-  input: Input,
-) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(Name("", "Name"), _)), next_input)) -> {
-      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(..parse_state, name: Some(name)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
-      use #(damage, next_input_2) <- try(parse_float_element(next_input))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(
-          ..parse_state,
-          damage_dealt: Some(damage),
+fn anti_ship_continuous_field_config() {
+  dict.from_list([
+    #(Some(Tag(Name("", "Name"), [])), ParseValueString),
+    #(Some(Tag(Name("", "TotalDamageDone"), [])), ParseValueFloat),
+    #(Some(Tag(Name("", "MaxDamagePerShot"), [])), ParseValueInt),
+    #(Some(Tag(Name("", "ShotsFired"), [])), ParseValueInt),
+    #(Some(Tag(Name("", "HitCount"), [])), ParseValueInt),
+    #(Some(Tag(Name("", "ShotDuration"), [])), ParseValueFloat),
+    #(Some(Tag(Name("", "ShotsFiredOverTimeLimit"), [])), ParseValueInt),
+  ])
+}
+
+fn anti_ship_continuous_weapon_decoder(
+  parsed_fields: Dict(Option(Tag), ParsedValue(a)),
+) -> Result(AntiShipWeapon, String) {
+  case
+    dict.get(parsed_fields, Some(Tag(Name("", "Name"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "TotalDamageDone"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "MaxDamagePerShot"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "ShotsFired"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "HitCount"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "ShotDuration"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "ShotsFiredOverTimeLimit"), [])))
+  {
+    Ok(ParsedValueString(name)),
+      Ok(ParsedValueFloat(damage_dealt)),
+      Ok(ParsedValueInt(max_damage_per_round)),
+      Ok(ParsedValueInt(rounds_fired)),
+      Ok(ParsedValueInt(hits)),
+      Ok(ParsedValueFloat(shot_duration)),
+      Ok(ParsedValueInt(battle_short_shots))
+    -> {
+      Ok(AntiShipWeapon(
+        name: name,
+        damage_dealt: damage_dealt,
+        max_damage_per_round: max_damage_per_round,
+        type_details: AntiShipWeaponContinuousDetails(
+          shot_duration: shot_duration,
+          battle_short_shots: battle_short_shots,
         ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "MaxDamagePerShot"), _)), next_input)) -> {
-      use #(max_damage, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(
-          ..parse_state,
-          max_damage_per_round: Some(max_damage),
-        ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
-      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(
-          ..parse_state,
-          rounds_fired: Some(rounds_fired),
-        ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "HitCount"), _)), next_input)) -> {
-      use #(hits, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(..parse_state, hits: Some(hits)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "ShotDuration"), _)), next_input)) -> {
-      use #(shot_duration, next_input_2) <- try(parse_float_element(next_input))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(
-          ..parse_state,
-          shot_duration: Some(shot_duration),
-        ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "ShotsFiredOverTimeLimit"), _)), next_input)) -> {
-      use #(battle_short_shots, next_input_2) <- try(parse_int_element(
-        next_input,
+        rounds_fired: rounds_fired,
+        hits: hits,
       ))
-      parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(
-          ..parse_state,
-          battle_short_shots: Some(battle_short_shots),
-        ),
-        next_input_2,
-      )
     }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
-      parse_anti_ship_continuous_weapon_inner(parse_state, next_input_2)
+    _, _, _, _, _, _, _ -> {
+      Error("Missing anti ship continuous weapon data")
     }
-    Ok(#(xmlm.ElementEnd, next_input)) -> {
-      case parse_state {
-        ParseAntiShipContinuousWeaponState(
-          name: Some(name),
-          damage_dealt: Some(damage),
-          max_damage_per_round: Some(max_damage),
-          rounds_fired: Some(rounds_fired),
-          hits: Some(hits),
-          shot_duration: Some(shot_duration),
-          battle_short_shots: Some(battle_short_shots),
-        ) ->
-          Ok(#(
-            AntiShipWeapon(
-              name: name,
-              damage_dealt: damage,
-              max_damage_per_round: max_damage,
-              type_details: AntiShipWeaponContinuousDetails(
-                shot_duration: shot_duration,
-                battle_short_shots: battle_short_shots,
-              ),
-              rounds_fired: rounds_fired,
-              hits: hits,
-            ),
-            next_input,
-          ))
-        _ -> Error("Missing anti ship continuous weapon data")
-      }
-    }
-    Ok(#(xmlm.Data(data), _)) ->
-      Error(
-        string.concat(["Unexpected data at anti ship continuous weapon: ", data]),
-      )
-    Ok(#(xmlm.Dtd(_), next_input)) ->
-      parse_anti_ship_continuous_weapon_inner(parse_state, next_input)
   }
 }
 

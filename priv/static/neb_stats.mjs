@@ -10132,18 +10132,6 @@ var ParseShipState = class extends CustomType {
     this.anti_ship_missiles = anti_ship_missiles;
   }
 };
-var ParseAntiShipContinuousWeaponState = class extends CustomType {
-  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hits, shot_duration, battle_short_shots) {
-    super();
-    this.name = name;
-    this.damage_dealt = damage_dealt;
-    this.max_damage_per_round = max_damage_per_round;
-    this.rounds_fired = rounds_fired;
-    this.hits = hits;
-    this.shot_duration = shot_duration;
-    this.battle_short_shots = battle_short_shots;
-  }
-};
 var ParsedValueDecoder = class extends CustomType {
   constructor(x0) {
     super();
@@ -10309,6 +10297,91 @@ function parse_float_element(input2) {
   } else {
     let e = $[0];
     return new Error2(e);
+  }
+}
+function anti_ship_continuous_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "Name"), toList([]))),
+        new ParseValueString()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotsFired"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "HitCount"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotDuration"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotsFiredOverTimeLimit"), toList([]))),
+        new ParseValueInt()
+      ]
+    ])
+  );
+}
+function anti_ship_continuous_weapon_decoder(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Name"), toList([])))
+  );
+  let $1 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
+  );
+  let $2 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([])))
+  );
+  let $3 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotsFired"), toList([])))
+  );
+  let $4 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "HitCount"), toList([])))
+  );
+  let $5 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotDuration"), toList([])))
+  );
+  let $6 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotsFiredOverTimeLimit"), toList([])))
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueFloat && $6.isOk() && $6[0] instanceof ParsedValueInt) {
+    let name = $[0][0];
+    let damage_dealt = $1[0][0];
+    let max_damage_per_round = $2[0][0];
+    let rounds_fired = $3[0][0];
+    let hits = $4[0][0];
+    let shot_duration = $5[0][0];
+    let battle_short_shots = $6[0][0];
+    return new Ok(
+      new AntiShipWeapon(
+        name,
+        max_damage_per_round,
+        rounds_fired,
+        hits,
+        damage_dealt,
+        new AntiShipWeaponContinuousDetails(shot_duration, battle_short_shots)
+      )
+    );
+  } else {
+    return new Error2("Missing anti ship continuous weapon data");
   }
 }
 function anti_ship_field_config() {
@@ -10847,250 +10920,6 @@ function parse_anti_ship_craft_missile(input2) {
     input2
   );
 }
-function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
-  while (true) {
-    let parse_state = loop$parse_state;
-    let input2 = loop$input;
-    let $ = signal(input2);
-    if (!$.isOk()) {
-      let e = $[0];
-      return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Name") {
-      let next_input = $[0][1];
-      return try$(
-        parse_string_element(new None(), next_input),
-        (_use0) => {
-          let name = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                new Some(name),
-                _record.damage_dealt,
-                _record.max_damage_per_round,
-                _record.rounds_fired,
-                _record.hits,
-                _record.shot_duration,
-                _record.battle_short_shots
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalDamageDone") {
-      let next_input = $[0][1];
-      return try$(
-        parse_float_element(next_input),
-        (_use0) => {
-          let damage = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                _record.name,
-                new Some(damage),
-                _record.max_damage_per_round,
-                _record.rounds_fired,
-                _record.hits,
-                _record.shot_duration,
-                _record.battle_short_shots
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "MaxDamagePerShot") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let max_damage = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                _record.name,
-                _record.damage_dealt,
-                new Some(max_damage),
-                _record.rounds_fired,
-                _record.hits,
-                _record.shot_duration,
-                _record.battle_short_shots
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotsFired") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let rounds_fired = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                _record.name,
-                _record.damage_dealt,
-                _record.max_damage_per_round,
-                new Some(rounds_fired),
-                _record.hits,
-                _record.shot_duration,
-                _record.battle_short_shots
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "HitCount") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let hits = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                _record.name,
-                _record.damage_dealt,
-                _record.max_damage_per_round,
-                _record.rounds_fired,
-                new Some(hits),
-                _record.shot_duration,
-                _record.battle_short_shots
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotDuration") {
-      let next_input = $[0][1];
-      return try$(
-        parse_float_element(next_input),
-        (_use0) => {
-          let shot_duration = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                _record.name,
-                _record.damage_dealt,
-                _record.max_damage_per_round,
-                _record.rounds_fired,
-                _record.hits,
-                new Some(shot_duration),
-                _record.battle_short_shots
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotsFiredOverTimeLimit") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let battle_short_shots = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_continuous_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipContinuousWeaponState(
-                _record.name,
-                _record.damage_dealt,
-                _record.max_damage_per_round,
-                _record.rounds_fired,
-                _record.hits,
-                _record.shot_duration,
-                new Some(battle_short_shots)
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let next_input = $[0][1];
-      return try$(
-        skip_tag(next_input),
-        (next_input_2) => {
-          return parse_anti_ship_continuous_weapon_inner(
-            parse_state,
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      if (parse_state instanceof ParseAntiShipContinuousWeaponState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hits instanceof Some && parse_state.shot_duration instanceof Some && parse_state.battle_short_shots instanceof Some) {
-        let name = parse_state.name[0];
-        let damage = parse_state.damage_dealt[0];
-        let max_damage = parse_state.max_damage_per_round[0];
-        let rounds_fired = parse_state.rounds_fired[0];
-        let hits = parse_state.hits[0];
-        let shot_duration = parse_state.shot_duration[0];
-        let battle_short_shots = parse_state.battle_short_shots[0];
-        return new Ok(
-          [
-            new AntiShipWeapon(
-              name,
-              max_damage,
-              rounds_fired,
-              hits,
-              damage,
-              new AntiShipWeaponContinuousDetails(
-                shot_duration,
-                battle_short_shots
-              )
-            ),
-            next_input
-          ]
-        );
-      } else {
-        return new Error2("Missing anti ship continuous weapon data");
-      }
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      return new Error2(
-        concat2(
-          toList(["Unexpected data at anti ship continuous weapon: ", data])
-        )
-      );
-    } else {
-      let next_input = $[0][1];
-      loop$parse_state = parse_state;
-      loop$input = next_input;
-    }
-  }
-}
-function parse_anti_ship_continuous_weapon(input2) {
-  return parse_anti_ship_continuous_weapon_inner(
-    new ParseAntiShipContinuousWeaponState(
-      new None(),
-      new None(),
-      new None(),
-      new None(),
-      new None(),
-      new None(),
-      new None()
-    ),
-    input2
-  );
-}
 function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
   while (true) {
     let field_config = loop$field_config;
@@ -11120,7 +10949,7 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
                   new Some(tag),
                   new ParsedValueSubElement(new_decoded_value)
                 );
-                echo(next_parsed_fields, "src/parse.gleam", 1322);
+                echo(next_parsed_fields, "src/parse.gleam", 1244);
                 return parse_map(field_config, next_parsed_fields, next_input_2);
               }
             );
@@ -11153,7 +10982,7 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
                     }
                   }
                 );
-                echo(next_parsed_fields, "src/parse.gleam", 1341);
+                echo(next_parsed_fields, "src/parse.gleam", 1263);
                 return parse_map(field_config, next_parsed_fields, next_input_2);
               }
             );
@@ -11229,6 +11058,26 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
       loop$parsed_fields = parsed_fields;
       loop$input = next_input;
     }
+  }
+}
+function parse_anti_ship_continuous_weapon(input2) {
+  let parse_result = parse_map(
+    anti_ship_continuous_field_config(),
+    new_map(),
+    input2
+  );
+  if (parse_result.isOk()) {
+    let parsed_fields = parse_result[0][0];
+    let next_input = parse_result[0][1];
+    return try$(
+      anti_ship_continuous_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok([weapon, next_input]);
+      }
+    );
+  } else {
+    let e = parse_result[0];
+    return new Error2(e);
   }
 }
 function parse_anti_ship_weapon(input2) {
