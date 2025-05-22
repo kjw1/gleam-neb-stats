@@ -10299,6 +10299,52 @@ function parse_float_element(input2) {
     return new Error2(e);
   }
 }
+function get_parsed_continuous_weapons(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(
+      new Tag(
+        new Name("", "WeaponReport"),
+        toList([
+          new Attribute2(
+            new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+            "ContinuousWeaponReport"
+          )
+        ])
+      )
+    )
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueList) {
+    let weapons = $[0][0];
+    return new Ok(weapons);
+  } else {
+    echo(parsed_fields, "src/parse.gleam", 939);
+    return new Error2("Missing continuous weapons");
+  }
+}
+function get_parsed_discrete_weapons(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(
+      new Tag(
+        new Name("", "WeaponReport"),
+        toList([
+          new Attribute2(
+            new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+            "DiscreteWeaponReport"
+          )
+        ])
+      )
+    )
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueList) {
+    let weapons = $[0][0];
+    return new Ok(weapons);
+  } else {
+    echo(parsed_fields, "src/parse.gleam", 966);
+    return new Error2("Missing discrete weapons");
+  }
+}
 function anti_ship_continuous_field_config() {
   return from_list(
     toList([
@@ -10384,6 +10430,18 @@ function anti_ship_continuous_weapon_decoder(parsed_fields) {
     return new Error2("Missing anti ship continuous weapon data");
   }
 }
+function anti_ship_weapon_continuous_child_decoder(tag, parsed_fields) {
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "WeaponReport" && tag.attributes.hasLength(1) && tag.attributes.head instanceof Attribute2 && tag.attributes.head.name instanceof Name && tag.attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && tag.attributes.head.name.local === "type" && tag.attributes.head.value === "ContinuousWeaponReport") {
+    return try$(
+      anti_ship_continuous_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok(weapon);
+      }
+    );
+  } else {
+    return new Error2("Unexpected tag for anti ship weapon");
+  }
+}
 function anti_ship_field_config() {
   return from_list(
     toList([
@@ -10459,6 +10517,58 @@ function anti_ship_weapon_decoder(parsed_fields) {
   } else {
     return new Error2("Missing anti ship weapon data");
   }
+}
+function anti_ship_weapon_child_decoder(tag, parsed_fields) {
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "WeaponReport" && tag.attributes.hasLength(1) && tag.attributes.head instanceof Attribute2 && tag.attributes.head.name instanceof Name && tag.attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && tag.attributes.head.name.local === "type" && tag.attributes.head.value === "DiscreteWeaponReport") {
+    return try$(
+      anti_ship_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok(weapon);
+      }
+    );
+  } else {
+    return new Error2("Unexpected tag for anti ship weapon");
+  }
+}
+function anti_ship_weapons_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(
+          new Tag(
+            new Name("", "WeaponReport"),
+            toList([
+              new Attribute2(
+                new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+                "DiscreteWeaponReport"
+              )
+            ])
+          )
+        ),
+        new ParseValueList(
+          anti_ship_field_config(),
+          new ParsedValueDecoder(anti_ship_weapon_child_decoder)
+        )
+      ],
+      [
+        new Some(
+          new Tag(
+            new Name("", "WeaponReport"),
+            toList([
+              new Attribute2(
+                new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+                "ContinuousWeaponReport"
+              )
+            ])
+          )
+        ),
+        new ParseValueList(
+          anti_ship_continuous_field_config(),
+          new ParsedValueDecoder(anti_ship_weapon_continuous_child_decoder)
+        )
+      ]
+    ])
+  );
 }
 function parse_missile_field_config() {
   return from_list(
@@ -10888,6 +10998,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
           ]
         );
       } else {
+        echo(parse_state, "src/parse.gleam", 742);
         return new Error2("Missing anti-ship craft missile data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -10949,7 +11060,7 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
                   new Some(tag),
                   new ParsedValueSubElement(new_decoded_value)
                 );
-                echo(next_parsed_fields, "src/parse.gleam", 1244);
+                echo(next_parsed_fields, "src/parse.gleam", 1327);
                 return parse_map(field_config, next_parsed_fields, next_input_2);
               }
             );
@@ -10982,7 +11093,7 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
                     }
                   }
                 );
-                echo(next_parsed_fields, "src/parse.gleam", 1263);
+                echo(next_parsed_fields, "src/parse.gleam", 1346);
                 return parse_map(field_config, next_parsed_fields, next_input_2);
               }
             );
@@ -11031,6 +11142,7 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
           }
         );
       } else {
+        echo(["Skipping", tag], "src/parse.gleam", 1371);
         return try$(
           skip_tag(next_input),
           (next_input2) => {
@@ -11060,101 +11172,30 @@ function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
     }
   }
 }
-function parse_anti_ship_continuous_weapon(input2) {
+function parse_anti_ship_weapons(input2) {
   let parse_result = parse_map(
-    anti_ship_continuous_field_config(),
+    anti_ship_weapons_field_config(),
     new_map(),
     input2
   );
   if (parse_result.isOk()) {
     let parsed_fields = parse_result[0][0];
     let next_input = parse_result[0][1];
-    return try$(
-      anti_ship_continuous_weapon_decoder(parsed_fields),
-      (weapon) => {
-        return new Ok([weapon, next_input]);
-      }
+    let _block;
+    let _pipe = get_parsed_discrete_weapons(parsed_fields);
+    _block = unwrap(_pipe, toList([]));
+    let discrete_weapons = _block;
+    let _block$1;
+    let _pipe$1 = get_parsed_continuous_weapons(parsed_fields);
+    _block$1 = unwrap(_pipe$1, toList([]));
+    let continuous_weapons = _block$1;
+    return new Ok(
+      [append(discrete_weapons, continuous_weapons), next_input]
     );
   } else {
     let e = parse_result[0];
     return new Error2(e);
   }
-}
-function parse_anti_ship_weapon(input2) {
-  let parse_result = parse_map(anti_ship_field_config(), new_map(), input2);
-  if (parse_result.isOk()) {
-    let parsed_fields = parse_result[0][0];
-    let next_input = parse_result[0][1];
-    return try$(
-      anti_ship_weapon_decoder(parsed_fields),
-      (weapon) => {
-        return new Ok([weapon, next_input]);
-      }
-    );
-  } else {
-    let e = parse_result[0];
-    return new Error2(e);
-  }
-}
-function parse_anti_ship_weapons_inner(loop$anti_ship_weapons, loop$input) {
-  while (true) {
-    let anti_ship_weapons = loop$anti_ship_weapons;
-    let input2 = loop$input;
-    let $ = signal(input2);
-    if (!$.isOk()) {
-      let e = $[0];
-      return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "DiscreteWeaponReport") {
-      let next_input = $[0][1];
-      return try$(
-        parse_anti_ship_weapon(next_input),
-        (_use0) => {
-          let weapon = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapons_inner(
-            prepend(weapon, anti_ship_weapons),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "ContinuousWeaponReport") {
-      let next_input = $[0][1];
-      return try$(
-        parse_anti_ship_continuous_weapon(next_input),
-        (_use0) => {
-          let weapon = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapons_inner(
-            prepend(weapon, anti_ship_weapons),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let next_input = $[0][1];
-      return try$(
-        skip_tag(next_input),
-        (next_input_2) => {
-          return parse_anti_ship_weapons_inner(anti_ship_weapons, next_input_2);
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      return new Ok([anti_ship_weapons, next_input]);
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      return new Error2(
-        concat2(toList(["Unexpected data at anti ship weapons: ", data]))
-      );
-    } else {
-      let next_input = $[0][1];
-      loop$anti_ship_weapons = anti_ship_weapons;
-      loop$input = next_input;
-    }
-  }
-}
-function parse_anti_ship_weapons(input2) {
-  return parse_anti_ship_weapons_inner(toList([]), input2);
 }
 function parse_anti_ship_inner(loop$anti_ship, loop$input) {
   while (true) {
@@ -11199,6 +11240,22 @@ function parse_anti_ship_inner(loop$anti_ship, loop$input) {
 }
 function parse_anti_ship(input2) {
   return parse_anti_ship_inner(toList([]), input2);
+}
+function parse_anti_ship_weapon(input2) {
+  let parse_result = parse_map(anti_ship_field_config(), new_map(), input2);
+  if (parse_result.isOk()) {
+    let parsed_fields = parse_result[0][0];
+    let next_input = parse_result[0][1];
+    return try$(
+      anti_ship_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok([weapon, next_input]);
+      }
+    );
+  } else {
+    let e = parse_result[0];
+    return new Error2(e);
+  }
 }
 function parse_missiles(input2) {
   let parse_result = parse_map(

@@ -7,6 +7,7 @@ import data/report.{
 import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import gleam/string
@@ -738,6 +739,7 @@ fn parse_anti_ship_craft_missile_inner(
           ))
         }
         _ -> {
+          echo parse_state
           Error("Missing anti-ship craft missile data")
         }
       }
@@ -899,37 +901,28 @@ fn parse_anti_ship_inner(
 }
 
 fn parse_anti_ship_weapons(input) {
-  parse_anti_ship_weapons_inner([], input)
+  let parse_result =
+    parse_map(anti_ship_weapons_field_config(), dict.new(), input)
+  case parse_result {
+    Ok(#(parsed_fields, next_input)) -> {
+      let discrete_weapons =
+        get_parsed_discrete_weapons(parsed_fields) |> result.unwrap([])
+      let continuous_weapons =
+        get_parsed_continuous_weapons(parsed_fields) |> result.unwrap([])
+      Ok(#(list.append(discrete_weapons, continuous_weapons), next_input))
+    }
+    Error(e) -> Error(e)
+  }
 }
 
-fn parse_anti_ship_weapons_inner(
-  anti_ship_weapons: List(AntiShipWeapon),
-  input: Input,
-) -> Result(#(List(AntiShipWeapon), Input), String) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(
-      ElementStart(Tag(
-        Name("", "WeaponReport"),
-        [
-          xmlm.Attribute(
-            name: Name(
-              uri: "http://www.w3.org/2001/XMLSchema-instance",
-              local: "type",
-            ),
-            value: "DiscreteWeaponReport",
-          ),
-        ],
-      )),
-      next_input,
-    )) -> {
-      use #(weapon, next_input_2) <- try(parse_anti_ship_weapon(next_input))
-      parse_anti_ship_weapons_inner([weapon, ..anti_ship_weapons], next_input_2)
-    }
-    Ok(#(
-      ElementStart(Tag(
-        Name("", "WeaponReport"),
-        [
+fn get_parsed_continuous_weapons(
+  parsed_fields,
+) -> Result(List(AntiShipWeapon), String) {
+  case
+    dict.get(
+      parsed_fields,
+      Some(
+        Tag(Name("", "WeaponReport"), [
           xmlm.Attribute(
             name: Name(
               uri: "http://www.w3.org/2001/XMLSchema-instance",
@@ -937,36 +930,126 @@ fn parse_anti_ship_weapons_inner(
             ),
             value: "ContinuousWeaponReport",
           ),
-        ],
-      )),
-      next_input,
-    )) -> {
-      use #(weapon, next_input_2) <- try(parse_anti_ship_continuous_weapon(
-        next_input,
-      ))
-      parse_anti_ship_weapons_inner([weapon, ..anti_ship_weapons], next_input_2)
+        ]),
+      ),
+    )
+  {
+    Ok(ParsedValueList(weapons)) -> Ok(weapons)
+    _ -> {
+      echo parsed_fields
+      Error("Missing continuous weapons")
     }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
-      parse_anti_ship_weapons_inner(anti_ship_weapons, next_input_2)
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(anti_ship_weapons, next_input))
-    Ok(#(xmlm.Data(data), _)) ->
-      Error(string.concat(["Unexpected data at anti ship weapons: ", data]))
-    Ok(#(xmlm.Dtd(_), next_input)) ->
-      parse_anti_ship_weapons_inner(anti_ship_weapons, next_input)
   }
 }
 
-fn parse_anti_ship_continuous_weapon(input) {
-  let parse_result =
-    parse_map(anti_ship_continuous_field_config(), dict.new(), input)
-  case parse_result {
-    Ok(#(parsed_fields, next_input)) -> {
-      use weapon <- try(anti_ship_continuous_weapon_decoder(parsed_fields))
-      Ok(#(weapon, next_input))
+fn get_parsed_discrete_weapons(
+  parsed_fields,
+) -> Result(List(AntiShipWeapon), String) {
+  case
+    dict.get(
+      parsed_fields,
+      Some(
+        Tag(Name("", "WeaponReport"), [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "DiscreteWeaponReport",
+          ),
+        ]),
+      ),
+    )
+  {
+    Ok(ParsedValueList(weapons)) -> Ok(weapons)
+    _ -> {
+      echo parsed_fields
+      Error("Missing discrete weapons")
     }
-    Error(e) -> Error(e)
+  }
+}
+
+fn anti_ship_weapons_field_config() {
+  dict.from_list([
+    #(
+      Some(
+        Tag(Name("", "WeaponReport"), [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "DiscreteWeaponReport",
+          ),
+        ]),
+      ),
+      ParseValueList(
+        anti_ship_field_config(),
+        ParsedValueDecoder(anti_ship_weapon_child_decoder),
+      ),
+    ),
+    #(
+      Some(
+        Tag(Name("", "WeaponReport"), [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "ContinuousWeaponReport",
+          ),
+        ]),
+      ),
+      ParseValueList(
+        anti_ship_continuous_field_config(),
+        ParsedValueDecoder(anti_ship_weapon_continuous_child_decoder),
+      ),
+    ),
+  ])
+}
+
+fn anti_ship_weapon_continuous_child_decoder(
+  tag,
+  parsed_fields,
+) -> Result(AntiShipWeapon, String) {
+  case tag {
+    Tag(
+      Name("", "WeaponReport"),
+      [
+        xmlm.Attribute(
+          name: Name(
+            uri: "http://www.w3.org/2001/XMLSchema-instance",
+            local: "type",
+          ),
+          value: "ContinuousWeaponReport",
+        ),
+      ],
+    ) -> {
+      use weapon <- try(anti_ship_continuous_weapon_decoder(parsed_fields))
+      Ok(weapon)
+    }
+    _ -> Error("Unexpected tag for anti ship weapon")
+  }
+}
+
+fn anti_ship_weapon_child_decoder(tag, parsed_fields) {
+  case tag {
+    Tag(
+      Name("", "WeaponReport"),
+      [
+        xmlm.Attribute(
+          name: Name(
+            uri: "http://www.w3.org/2001/XMLSchema-instance",
+            local: "type",
+          ),
+          value: "DiscreteWeaponReport",
+        ),
+      ],
+    ) -> {
+      use weapon <- try(anti_ship_weapon_decoder(parsed_fields))
+      Ok(weapon)
+    }
+    _ -> Error("Unexpected tag for anti ship weapon")
   }
 }
 
@@ -1285,6 +1368,7 @@ fn parse_map(
           parse_map(field_config, next_parsed_fields, next_input_2)
         }
         Error(Nil) -> {
+          echo #("Skipping", tag)
           use next_input <- try(skip_tag(next_input))
           parse_map(field_config, parsed_fields, next_input)
         }
