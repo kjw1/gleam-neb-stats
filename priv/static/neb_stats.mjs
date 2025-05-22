@@ -10144,17 +10144,6 @@ var ParseAntiShipContinuousWeaponState = class extends CustomType {
     this.battle_short_shots = battle_short_shots;
   }
 };
-var ParseAntiShipWeaponState = class extends CustomType {
-  constructor(name, max_damage_per_round, rounds_carried, rounds_fired, hits, damage_dealt) {
-    super();
-    this.name = name;
-    this.max_damage_per_round = max_damage_per_round;
-    this.rounds_carried = rounds_carried;
-    this.rounds_fired = rounds_fired;
-    this.hits = hits;
-    this.damage_dealt = damage_dealt;
-  }
-};
 var ParsedValueDecoder = class extends CustomType {
   constructor(x0) {
     super();
@@ -10168,6 +10157,13 @@ var ParseValueInt = class extends CustomType {
 var ParseValueFloat = class extends CustomType {
 };
 var ParseValueList = class extends CustomType {
+  constructor(x0, x1) {
+    super();
+    this[0] = x0;
+    this[1] = x1;
+  }
+};
+var ParseValueSubElement = class extends CustomType {
   constructor(x0, x1) {
     super();
     this[0] = x0;
@@ -10193,6 +10189,12 @@ var ParsedValueFloat = class extends CustomType {
   }
 };
 var ParsedValueList = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var ParsedValueSubElement = class extends CustomType {
   constructor(x0) {
     super();
     this[0] = x0;
@@ -10307,6 +10309,82 @@ function parse_float_element(input2) {
   } else {
     let e = $[0];
     return new Error2(e);
+  }
+}
+function anti_ship_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "Name"), toList([]))),
+        new ParseValueString()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "RoundsCarried"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotsFired"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "HitCount"), toList([]))),
+        new ParseValueInt()
+      ]
+    ])
+  );
+}
+function anti_ship_weapon_decoder(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Name"), toList([])))
+  );
+  let $1 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
+  );
+  let $2 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([])))
+  );
+  let $3 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "RoundsCarried"), toList([])))
+  );
+  let $4 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotsFired"), toList([])))
+  );
+  let $5 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "HitCount"), toList([])))
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt) {
+    let name = $[0][0];
+    let damage_dealt = $1[0][0];
+    let max_damage_per_round = $2[0][0];
+    let rounds_carried = $3[0][0];
+    let rounds_fired = $4[0][0];
+    let hits = $5[0][0];
+    return new Ok(
+      new AntiShipWeapon(
+        name,
+        max_damage_per_round,
+        rounds_fired,
+        hits,
+        damage_dealt,
+        new AntiShipWeaponGunDetails(rounds_carried)
+      )
+    );
+  } else {
+    return new Error2("Missing anti ship weapon data");
   }
 }
 function parse_missile_field_config() {
@@ -11013,209 +11091,161 @@ function parse_anti_ship_continuous_weapon(input2) {
     input2
   );
 }
-function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
+function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
   while (true) {
-    let parse_state = loop$parse_state;
+    let field_config = loop$field_config;
+    let parsed_fields = loop$parsed_fields;
     let input2 = loop$input;
     let $ = signal(input2);
     if (!$.isOk()) {
       let e = $[0];
       return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Name") {
-      let next_input = $[0][1];
-      return try$(
-        parse_string_element(new None(), next_input),
-        (_use0) => {
-          let name = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipWeaponState(
-                new Some(name),
-                _record.max_damage_per_round,
-                _record.rounds_carried,
-                _record.rounds_fired,
-                _record.hits,
-                _record.damage_dealt
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalDamageDone") {
-      let next_input = $[0][1];
-      return try$(
-        parse_float_element(next_input),
-        (_use0) => {
-          let damage = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipWeaponState(
-                _record.name,
-                _record.max_damage_per_round,
-                _record.rounds_carried,
-                _record.rounds_fired,
-                _record.hits,
-                new Some(damage)
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "MaxDamagePerShot") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let max_damage = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipWeaponState(
-                _record.name,
-                new Some(max_damage),
-                _record.rounds_carried,
-                _record.rounds_fired,
-                _record.hits,
-                _record.damage_dealt
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "RoundsCarried") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let rounds_carried = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipWeaponState(
-                _record.name,
-                _record.max_damage_per_round,
-                new Some(rounds_carried),
-                _record.rounds_fired,
-                _record.hits,
-                _record.damage_dealt
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotsFired") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let rounds_fired = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipWeaponState(
-                _record.name,
-                _record.max_damage_per_round,
-                _record.rounds_carried,
-                new Some(rounds_fired),
-                _record.hits,
-                _record.damage_dealt
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "HitCount") {
-      let next_input = $[0][1];
-      return try$(
-        parse_int_element(next_input),
-        (_use0) => {
-          let hits = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_weapon_inner(
-            (() => {
-              let _record = parse_state;
-              return new ParseAntiShipWeaponState(
-                _record.name,
-                _record.max_damage_per_round,
-                _record.rounds_carried,
-                _record.rounds_fired,
-                new Some(hits),
-                _record.damage_dealt
-              );
-            })(),
-            next_input_2
-          );
-        }
-      );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
       let next_input = $[0][1];
-      return try$(
-        skip_tag(next_input),
-        (next_input_2) => {
-          return parse_anti_ship_weapon_inner(parse_state, next_input_2);
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      if (parse_state instanceof ParseAntiShipWeaponState && parse_state.name instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_carried instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hits instanceof Some && parse_state.damage_dealt instanceof Some) {
-        let name = parse_state.name[0];
-        let max_damage = parse_state.max_damage_per_round[0];
-        let rounds_carried = parse_state.rounds_carried[0];
-        let rounds_fired = parse_state.rounds_fired[0];
-        let hits = parse_state.hits[0];
-        let damage = parse_state.damage_dealt[0];
-        return new Ok(
-          [
-            new AntiShipWeapon(
-              name,
-              max_damage,
-              rounds_fired,
-              hits,
-              damage,
-              new AntiShipWeaponGunDetails(rounds_carried)
-            ),
-            next_input
-          ]
+      let $1 = map_get(field_config, new Some(tag));
+      if ($1.isOk() && $1[0] instanceof ParseValueSubElement && $1[0][1] instanceof ParsedValueDecoder) {
+        let sub_field_config = $1[0][0];
+        let decoder = $1[0][1][0];
+        return try$(
+          parse_map(sub_field_config, new_map(), next_input),
+          (_use0) => {
+            let sub_parsed_fields = _use0[0];
+            let next_input_2 = _use0[1];
+            return try$(
+              decoder(tag, sub_parsed_fields),
+              (new_decoded_value) => {
+                let next_parsed_fields = insert(
+                  parsed_fields,
+                  new Some(tag),
+                  new ParsedValueSubElement(new_decoded_value)
+                );
+                echo(next_parsed_fields, "src/parse.gleam", 1322);
+                return parse_map(field_config, next_parsed_fields, next_input_2);
+              }
+            );
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueList && $1[0][1] instanceof ParsedValueDecoder) {
+        let sub_field_config = $1[0][0];
+        let decoder = $1[0][1][0];
+        return try$(
+          parse_map(sub_field_config, new_map(), next_input),
+          (_use0) => {
+            let sub_parsed_fields = _use0[0];
+            let next_input_2 = _use0[1];
+            return try$(
+              decoder(tag, sub_parsed_fields),
+              (new_decoded_value) => {
+                let next_parsed_fields = upsert(
+                  parsed_fields,
+                  new Some(tag),
+                  (maybe_existing_value) => {
+                    if (maybe_existing_value instanceof Some && maybe_existing_value[0] instanceof ParsedValueList) {
+                      let existing_parsed_fields = maybe_existing_value[0][0];
+                      return new ParsedValueList(
+                        prepend(new_decoded_value, existing_parsed_fields)
+                      );
+                    } else if (maybe_existing_value instanceof Some) {
+                      return new ParsedValueList(toList([new_decoded_value]));
+                    } else {
+                      return new ParsedValueList(toList([new_decoded_value]));
+                    }
+                  }
+                );
+                echo(next_parsed_fields, "src/parse.gleam", 1341);
+                return parse_map(field_config, next_parsed_fields, next_input_2);
+              }
+            );
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueString) {
+        return try$(
+          parse_string_element(new None(), next_input),
+          (_use0) => {
+            let value = _use0[0];
+            let next_input_2 = _use0[1];
+            let next_parsed_fields = insert(
+              parsed_fields,
+              new Some(tag),
+              new ParsedValueString(value)
+            );
+            return parse_map(field_config, next_parsed_fields, next_input_2);
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueInt) {
+        return try$(
+          parse_int_element(next_input),
+          (_use0) => {
+            let value = _use0[0];
+            let next_input_2 = _use0[1];
+            let next_parsed_fields = insert(
+              parsed_fields,
+              new Some(tag),
+              new ParsedValueInt(value)
+            );
+            return parse_map(field_config, next_parsed_fields, next_input_2);
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueFloat) {
+        return try$(
+          parse_float_element(next_input),
+          (_use0) => {
+            let value = _use0[0];
+            let next_input_2 = _use0[1];
+            let next_parsed_fields = insert(
+              parsed_fields,
+              new Some(tag),
+              new ParsedValueFloat(value)
+            );
+            return parse_map(field_config, next_parsed_fields, next_input_2);
+          }
         );
       } else {
-        return new Error2("Missing anti ship weapon data");
+        return try$(
+          skip_tag(next_input),
+          (next_input2) => {
+            return parse_map(field_config, parsed_fields, next_input2);
+          }
+        );
       }
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([parsed_fields, next_input]);
     } else if ($.isOk() && $[0][0] instanceof Data) {
       let data = $[0][0][0];
-      return new Error2(
-        concat2(toList(["Unexpected data at anti ship weapon: ", data]))
+      let next_input = $[0][1];
+      let next_parsed_fields = insert(
+        parsed_fields,
+        new None(),
+        new ParsedValueString(data)
       );
+      loop$field_config = field_config;
+      loop$parsed_fields = next_parsed_fields;
+      loop$input = next_input;
     } else {
       let next_input = $[0][1];
-      loop$parse_state = parse_state;
+      loop$field_config = field_config;
+      loop$parsed_fields = parsed_fields;
       loop$input = next_input;
     }
   }
 }
 function parse_anti_ship_weapon(input2) {
-  return parse_anti_ship_weapon_inner(
-    new ParseAntiShipWeaponState(
-      new None(),
-      new None(),
-      new None(),
-      new None(),
-      new None(),
-      new None()
-    ),
-    input2
-  );
+  let parse_result = parse_map(anti_ship_field_config(), new_map(), input2);
+  if (parse_result.isOk()) {
+    let parsed_fields = parse_result[0][0];
+    let next_input = parse_result[0][1];
+    return try$(
+      anti_ship_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok([weapon, next_input]);
+      }
+    );
+  } else {
+    let e = parse_result[0];
+    return new Error2(e);
+  }
 }
 function parse_anti_ship_weapons_inner(loop$anti_ship_weapons, loop$input) {
   while (true) {
@@ -11320,124 +11350,6 @@ function parse_anti_ship_inner(loop$anti_ship, loop$input) {
 }
 function parse_anti_ship(input2) {
   return parse_anti_ship_inner(toList([]), input2);
-}
-function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
-  while (true) {
-    let field_config = loop$field_config;
-    let parsed_fields = loop$parsed_fields;
-    let input2 = loop$input;
-    let $ = signal(input2);
-    if (!$.isOk()) {
-      let e = $[0];
-      return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let tag = $[0][0][0];
-      let next_input = $[0][1];
-      let $1 = map_get(field_config, new Some(tag));
-      if ($1.isOk() && $1[0] instanceof ParseValueList && $1[0][1] instanceof ParsedValueDecoder) {
-        let sub_field_config = $1[0][0];
-        let decoder = $1[0][1][0];
-        return try$(
-          parse_map(sub_field_config, new_map(), next_input),
-          (_use0) => {
-            let sub_parsed_fields = _use0[0];
-            let next_input_2 = _use0[1];
-            return try$(
-              decoder(tag, sub_parsed_fields),
-              (new_decoded_value) => {
-                let next_parsed_fields = upsert(
-                  parsed_fields,
-                  new Some(tag),
-                  (maybe_existing_value) => {
-                    if (maybe_existing_value instanceof Some && maybe_existing_value[0] instanceof ParsedValueList) {
-                      let existing_parsed_fields = maybe_existing_value[0][0];
-                      return new ParsedValueList(
-                        prepend(new_decoded_value, existing_parsed_fields)
-                      );
-                    } else if (maybe_existing_value instanceof Some) {
-                      return new ParsedValueList(toList([new_decoded_value]));
-                    } else {
-                      return new ParsedValueList(toList([new_decoded_value]));
-                    }
-                  }
-                );
-                echo(next_parsed_fields, "src/parse.gleam", 1384);
-                return parse_map(field_config, next_parsed_fields, next_input_2);
-              }
-            );
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueString) {
-        return try$(
-          parse_string_element(new None(), next_input),
-          (_use0) => {
-            let value = _use0[0];
-            let next_input_2 = _use0[1];
-            let next_parsed_fields = insert(
-              parsed_fields,
-              new Some(tag),
-              new ParsedValueString(value)
-            );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueInt) {
-        return try$(
-          parse_int_element(next_input),
-          (_use0) => {
-            let value = _use0[0];
-            let next_input_2 = _use0[1];
-            let next_parsed_fields = insert(
-              parsed_fields,
-              new Some(tag),
-              new ParsedValueInt(value)
-            );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueFloat) {
-        return try$(
-          parse_float_element(next_input),
-          (_use0) => {
-            let value = _use0[0];
-            let next_input_2 = _use0[1];
-            let next_parsed_fields = insert(
-              parsed_fields,
-              new Some(tag),
-              new ParsedValueFloat(value)
-            );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
-          }
-        );
-      } else {
-        return try$(
-          skip_tag(next_input),
-          (next_input2) => {
-            return parse_map(field_config, parsed_fields, next_input2);
-          }
-        );
-      }
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      return new Ok([parsed_fields, next_input]);
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      let next_input = $[0][1];
-      let next_parsed_fields = insert(
-        parsed_fields,
-        new None(),
-        new ParsedValueString(data)
-      );
-      loop$field_config = field_config;
-      loop$parsed_fields = next_parsed_fields;
-      loop$input = next_input;
-    } else {
-      let next_input = $[0][1];
-      loop$field_config = field_config;
-      loop$parsed_fields = parsed_fields;
-      loop$input = next_input;
-    }
-  }
 }
 function parse_missiles(input2) {
   let parse_result = parse_map(

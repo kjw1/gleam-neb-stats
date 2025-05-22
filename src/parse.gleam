@@ -1098,122 +1098,58 @@ fn parse_anti_ship_continuous_weapon_inner(
   }
 }
 
-type ParseAntiShipWeaponState {
-  ParseAntiShipWeaponState(
-    name: Option(String),
-    max_damage_per_round: Option(Int),
-    rounds_carried: Option(Int),
-    rounds_fired: Option(Int),
-    hits: Option(Int),
-    damage_dealt: Option(Float),
-  )
+fn anti_ship_field_config() {
+  dict.from_list([
+    #(Some(Tag(Name("", "Name"), [])), ParseValueString),
+    #(Some(Tag(Name("", "TotalDamageDone"), [])), ParseValueFloat),
+    #(Some(Tag(Name("", "MaxDamagePerShot"), [])), ParseValueInt),
+    #(Some(Tag(Name("", "RoundsCarried"), [])), ParseValueInt),
+    #(Some(Tag(Name("", "ShotsFired"), [])), ParseValueInt),
+    #(Some(Tag(Name("", "HitCount"), [])), ParseValueInt),
+  ])
+}
+
+fn anti_ship_weapon_decoder(
+  parsed_fields: Dict(Option(Tag), ParsedValue(a)),
+) -> Result(AntiShipWeapon, String) {
+  case
+    dict.get(parsed_fields, Some(Tag(Name("", "Name"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "TotalDamageDone"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "MaxDamagePerShot"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "RoundsCarried"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "ShotsFired"), []))),
+    dict.get(parsed_fields, Some(Tag(Name("", "HitCount"), [])))
+  {
+    Ok(ParsedValueString(name)),
+      Ok(ParsedValueFloat(damage_dealt)),
+      Ok(ParsedValueInt(max_damage_per_round)),
+      Ok(ParsedValueInt(rounds_carried)),
+      Ok(ParsedValueInt(rounds_fired)),
+      Ok(ParsedValueInt(hits))
+    -> {
+      Ok(AntiShipWeapon(
+        name: name,
+        damage_dealt: damage_dealt,
+        max_damage_per_round: max_damage_per_round,
+        type_details: AntiShipWeaponGunDetails(rounds_carried: rounds_carried),
+        rounds_fired: rounds_fired,
+        hits: hits,
+      ))
+    }
+    _, _, _, _, _, _ -> {
+      Error("Missing anti ship weapon data")
+    }
+  }
 }
 
 fn parse_anti_ship_weapon(input) {
-  parse_anti_ship_weapon_inner(
-    ParseAntiShipWeaponState(
-      name: None,
-      damage_dealt: None,
-      max_damage_per_round: None,
-      rounds_carried: None,
-      rounds_fired: None,
-      hits: None,
-    ),
-    input,
-  )
-}
-
-fn parse_anti_ship_weapon_inner(
-  parse_state,
-  input,
-) -> Result(#(AntiShipWeapon, Input), String) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(Name("", "Name"), _)), next_input)) -> {
-      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
-      parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(..parse_state, name: Some(name)),
-        next_input_2,
-      )
+  let parse_result = parse_map(anti_ship_field_config(), dict.new(), input)
+  case parse_result {
+    Ok(#(parsed_fields, next_input)) -> {
+      use weapon <- try(anti_ship_weapon_decoder(parsed_fields))
+      Ok(#(weapon, next_input))
     }
-    Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
-      use #(damage, next_input_2) <- try(parse_float_element(next_input))
-      parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(..parse_state, damage_dealt: Some(damage)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "MaxDamagePerShot"), _)), next_input)) -> {
-      use #(max_damage, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(
-          ..parse_state,
-          max_damage_per_round: Some(max_damage),
-        ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "RoundsCarried"), _)), next_input)) -> {
-      use #(rounds_carried, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(
-          ..parse_state,
-          rounds_carried: Some(rounds_carried),
-        ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
-      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(
-          ..parse_state,
-          rounds_fired: Some(rounds_fired),
-        ),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(Name("", "HitCount"), _)), next_input)) -> {
-      use #(hits, next_input_2) <- try(parse_int_element(next_input))
-      parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(..parse_state, hits: Some(hits)),
-        next_input_2,
-      )
-    }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
-      parse_anti_ship_weapon_inner(parse_state, next_input_2)
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) -> {
-      case parse_state {
-        ParseAntiShipWeaponState(
-          name: Some(name),
-          damage_dealt: Some(damage),
-          max_damage_per_round: Some(max_damage),
-          rounds_carried: Some(rounds_carried),
-          rounds_fired: Some(rounds_fired),
-          hits: Some(hits),
-        ) ->
-          Ok(#(
-            AntiShipWeapon(
-              name: name,
-              damage_dealt: damage,
-              max_damage_per_round: max_damage,
-              type_details: AntiShipWeaponGunDetails(
-                rounds_carried: rounds_carried,
-              ),
-              rounds_fired: rounds_fired,
-              hits: hits,
-            ),
-            next_input,
-          ))
-        _ -> Error("Missing anti ship weapon data")
-      }
-    }
-    Ok(#(xmlm.Data(data), _)) ->
-      Error(string.concat(["Unexpected data at anti ship weapon: ", data]))
-    Ok(#(xmlm.Dtd(_), next_input)) ->
-      parse_anti_ship_weapon_inner(parse_state, next_input)
+    Error(e) -> Error(e)
   }
 }
 
@@ -1347,6 +1283,10 @@ type ParseValue(contained) {
     Dict(Option(Tag), ParseValue(contained)),
     ParsedValueDecoder(contained),
   )
+  ParseValueSubElement(
+    Dict(Option(Tag), ParseValue(contained)),
+    ParsedValueDecoder(contained),
+  )
 }
 
 type ParsedValue(contained) {
@@ -1354,6 +1294,7 @@ type ParsedValue(contained) {
   ParsedValueInt(Int)
   ParsedValueFloat(Float)
   ParsedValueList(List(contained))
+  ParsedValueSubElement(contained)
 }
 
 fn parse_map(
@@ -1365,6 +1306,22 @@ fn parse_map(
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
       case dict.get(field_config, Some(tag)) {
+        Ok(ParseValueSubElement(sub_field_config, ParsedValueDecoder(decoder))) -> {
+          use #(sub_parsed_fields, next_input_2) <- try(parse_map(
+            sub_field_config,
+            dict.new(),
+            next_input,
+          ))
+          use new_decoded_value <- try(decoder(tag, sub_parsed_fields))
+          let next_parsed_fields =
+            dict.insert(
+              parsed_fields,
+              Some(tag),
+              ParsedValueSubElement(new_decoded_value),
+            )
+          echo next_parsed_fields
+          parse_map(field_config, next_parsed_fields, next_input_2)
+        }
         Ok(ParseValueList(sub_field_config, ParsedValueDecoder(decoder))) -> {
           use #(sub_parsed_fields, next_input_2) <- try(parse_map(
             sub_field_config,
