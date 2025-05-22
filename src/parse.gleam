@@ -1,7 +1,8 @@
 import data/report.{
-  type AntiShipWeapon, type Player, type Report, type Ship, type Team,
-  type TeamAOrB, AntiShipWeapon, AntiShipWeaponContinuousDetails,
-  AntiShipWeaponGunDetails, Player, Report, Ship, Team, TeamA, TeamB,
+  type AntiShipWeapon, type Craft, type Player, type Report, type Ship,
+  type Team, type TeamAOrB, AntiShipCraftMissileDetails, AntiShipWeapon,
+  AntiShipWeaponContinuousDetails, AntiShipWeaponGunDetails, Craft, Player,
+  Report, Ship, Team, TeamA, TeamB,
 }
 import gleam/float
 import gleam/int
@@ -261,11 +262,11 @@ fn parse_players_inner(
 }
 
 type ParsePlayerState {
-  ParsePlayerState(name: Option(String), ships: List(Ship))
+  ParsePlayerState(name: Option(String), ships: List(Ship), craft: List(Craft))
 }
 
 fn parse_player(input) {
-  parse_player_inner(ParsePlayerState(name: None, ships: []), input)
+  parse_player_inner(ParsePlayerState(name: None, ships: [], craft: []), input)
 }
 
 fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
@@ -285,14 +286,21 @@ fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
         next_input_2,
       )
     }
+    Ok(#(ElementStart(Tag(Name("", "Craft"), _)), next_input)) -> {
+      use #(craft, next_input_2) <- try(parse_craft(next_input))
+      parse_player_inner(
+        ParsePlayerState(..parse_state, craft: craft),
+        next_input_2,
+      )
+    }
     Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_player_inner(parse_state, next_input_2)
     }
     Ok(#(xmlm.ElementEnd, next_input)) -> {
       case parse_state {
-        ParsePlayerState(name: Some(name), ships: ships) -> {
-          Ok(#(Player(name: name, ships: ships), next_input))
+        ParsePlayerState(name: Some(name), ships: ships, craft: craft) -> {
+          Ok(#(Player(name: name, ships: ships, craft: craft), next_input))
         }
         _ -> Error("Missing player data")
       }
@@ -350,6 +358,395 @@ fn parse_float_element(input) -> Result(#(Float, Input), String) {
       Ok(#(value, next_input))
     }
     Error(e) -> Error(e)
+  }
+}
+
+fn parse_craft(input) {
+  parse_craft_inner([], input)
+}
+
+fn parse_craft_inner(
+  craft: List(Craft),
+  input: Input,
+) -> Result(#(List(Craft), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "CraftBattleReport"), _)), next_input)) -> {
+      use #(new_craft, next_input_2) <- try(parse_craft_report(next_input))
+      parse_craft_inner([new_craft, ..craft], next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_craft_inner(craft, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(craft, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at craft: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_craft_inner(craft, next_input)
+  }
+}
+
+type ParseCraftState {
+  ParseCraftState(
+    name: Option(String),
+    class: Option(String),
+    carried: Option(Int),
+    lost: Option(Int),
+    sorties: Option(Int),
+    anti_ship_weapons: List(AntiShipWeapon),
+  )
+}
+
+fn parse_craft_report(input) {
+  parse_craft_report_inner(
+    ParseCraftState(
+      name: None,
+      class: None,
+      carried: None,
+      lost: None,
+      sorties: None,
+      anti_ship_weapons: [],
+    ),
+    input,
+  )
+}
+
+fn parse_craft_report_inner(
+  parse_state,
+  input,
+) -> Result(#(Craft, Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "DesignName"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "FrameName"), _)), next_input)) -> {
+      use #(class, next_input) <- try(parse_string_element(None, next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, class: Some(class)),
+        next_input,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Carried"), _)), next_input)) -> {
+      use #(carried, next_input_2) <- try(parse_int_element(next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, carried: Some(carried)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Lost"), _)), next_input)) -> {
+      use #(lost, next_input_2) <- try(parse_int_element(next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, lost: Some(lost)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "SortiesFlown"), _)), next_input)) -> {
+      use #(sorties, next_input_2) <- try(parse_int_element(next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, sorties: Some(sorties)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "StrikeReport"), _)), next_input)) -> {
+      use #(weapons, next_input) <- try(parse_craft_strike(next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, anti_ship_weapons: weapons),
+        next_input,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_craft_report_inner(parse_state, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseCraftState(
+          name: Some(name),
+          class: Some(class),
+          carried: Some(carried),
+          lost: Some(lost),
+          sorties: Some(sorties),
+          anti_ship_weapons: anti_ship_weapons,
+        ) -> {
+          Ok(#(
+            Craft(
+              name: name,
+              class: class,
+              carried: carried,
+              lost: lost,
+              sorties: sorties,
+              anti_ship_weapons: anti_ship_weapons,
+            ),
+            next_input,
+          ))
+        }
+        _ -> {
+          Error("Missing craft data")
+        }
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at craft: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_craft_report_inner(parse_state, next_input)
+  }
+}
+
+fn parse_craft_strike(input) -> Result(#(List(AntiShipWeapon), Input), String) {
+  parse_craft_strike_inner([], input)
+}
+
+fn parse_craft_strike_inner(
+  craft_weapon_reports: List(AntiShipWeapon),
+  input,
+) -> Result(#(List(AntiShipWeapon), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "GeneralWeapons"), _)), next_input)) -> {
+      use #(weapons, next_input_2) <- try(parse_craft_strike_weapons(next_input))
+      parse_craft_strike_inner(weapons, next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_craft_strike_inner(craft_weapon_reports, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) ->
+      Ok(#(craft_weapon_reports, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at craft strike: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_craft_strike_inner(craft_weapon_reports, next_input)
+  }
+}
+
+fn parse_craft_strike_weapons(
+  input,
+) -> Result(#(List(AntiShipWeapon), Input), String) {
+  parse_craft_strike_weapons_inner([], input)
+}
+
+fn parse_craft_strike_weapons_inner(
+  craft_weapon_reports: List(AntiShipWeapon),
+  input: Input,
+) -> Result(#(List(AntiShipWeapon), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(
+      ElementStart(Tag(
+        Name("", "WeaponReport"),
+        [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "DiscreteWeaponReport",
+          ),
+        ],
+      )),
+      next_input,
+    )) -> {
+      use #(missile, next_input_2) <- try(parse_anti_ship_weapon(next_input))
+      parse_craft_strike_inner([missile, ..craft_weapon_reports], next_input_2)
+    }
+    Ok(#(
+      ElementStart(Tag(
+        Name("", "WeaponReport"),
+        [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "CraftMissileReport",
+          ),
+        ],
+      )),
+      next_input,
+    )) -> {
+      use #(missile, next_input_2) <- try(parse_anti_ship_craft_missile(
+        next_input,
+      ))
+      parse_craft_strike_inner([missile, ..craft_weapon_reports], next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_craft_strike_inner(craft_weapon_reports, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) ->
+      Ok(#(craft_weapon_reports, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at craft strike: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_craft_strike_inner(craft_weapon_reports, next_input)
+  }
+}
+
+type ParseAntiShipCraftMissileState {
+  ParseAntiShipCraftMissileState(
+    name: Option(String),
+    damage_dealt: Option(Float),
+    max_damage_per_round: Option(Int),
+    rounds_fired: Option(Int),
+    hit: Option(Int),
+    miss: Option(Int),
+    soft_killed: Option(Int),
+    hard_killed: Option(Int),
+    sortied: Option(Int),
+  )
+}
+
+fn parse_anti_ship_craft_missile(input) {
+  parse_anti_ship_craft_missile_inner(
+    ParseAntiShipCraftMissileState(
+      name: None,
+      damage_dealt: None,
+      max_damage_per_round: None,
+      rounds_fired: None,
+      hit: None,
+      miss: None,
+      soft_killed: None,
+      hard_killed: None,
+      sortied: None,
+    ),
+    input,
+  )
+}
+
+fn parse_anti_ship_craft_missile_inner(
+  parse_state: ParseAntiShipCraftMissileState,
+  input: Input,
+) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "Name"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalDamageDone"), _)), next_input)) -> {
+      use #(damage, next_input_2) <- try(parse_float_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          damage_dealt: Some(damage),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "MaxDamagePerShot"), _)), next_input)) -> {
+      use #(max_damage, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          max_damage_per_round: Some(max_damage),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
+      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          rounds_fired: Some(rounds_fired),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "HitCount"), _)), next_input)) -> {
+      use #(hits, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(..parse_state, hit: Some(hits)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalSortied"), _)), next_input)) -> {
+      use #(sortied, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(..parse_state, sortied: Some(sortied)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Misses"), _)), next_input)) -> {
+      use #(miss, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(..parse_state, miss: Some(miss)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Softkills"), _)), next_input)) -> {
+      use #(soft_kill, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          soft_killed: Some(soft_kill),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "Hardkills"), _)), next_input)) -> {
+      use #(hard_kill, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          hard_killed: Some(hard_kill),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_anti_ship_craft_missile_inner(parse_state, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseAntiShipCraftMissileState(
+          name: Some(name),
+          damage_dealt: Some(damage_dealt),
+          max_damage_per_round: Some(max_damage_per_round),
+          rounds_fired: Some(rounds_fired),
+          hit: Some(hit),
+          miss: Some(miss),
+          soft_killed: Some(soft_killed),
+          hard_killed: Some(hard_killed),
+          sortied: Some(sortied),
+        ) -> {
+          Ok(#(
+            AntiShipWeapon(
+              name: name,
+              damage_dealt: damage_dealt,
+              max_damage_per_round: max_damage_per_round,
+              rounds_fired: rounds_fired,
+              hits: hit,
+              type_details: AntiShipCraftMissileDetails(
+                miss: miss,
+                soft_killed: soft_killed,
+                hard_killed: hard_killed,
+                sortied: sortied,
+              ),
+            ),
+            next_input,
+          ))
+        }
+        _ -> {
+          Error("Missing anti-ship craft missile data")
+        }
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(
+        string.concat(["Unexpected data at anti-ship craft missile: ", data]),
+      )
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_anti_ship_craft_missile_inner(parse_state, next_input)
   }
 }
 

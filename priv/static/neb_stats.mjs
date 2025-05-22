@@ -4872,6 +4872,15 @@ var AntiShipWeaponContinuousDetails = class extends CustomType {
     this.battle_short_shots = battle_short_shots;
   }
 };
+var AntiShipCraftMissileDetails = class extends CustomType {
+  constructor(sortied, miss, soft_killed, hard_killed) {
+    super();
+    this.sortied = sortied;
+    this.miss = miss;
+    this.soft_killed = soft_killed;
+    this.hard_killed = hard_killed;
+  }
+};
 var Missile = class extends CustomType {
   constructor(name, damage_dealt, carried, expended, hit, miss, soft_killed, hard_killed) {
     super();
@@ -4895,11 +4904,23 @@ var Ship = class extends CustomType {
     this.anti_ship_missiles = anti_ship_missiles;
   }
 };
+var Craft = class extends CustomType {
+  constructor(name, class$2, carried, lost, sorties, anti_ship_weapons) {
+    super();
+    this.name = name;
+    this.class = class$2;
+    this.carried = carried;
+    this.lost = lost;
+    this.sorties = sorties;
+    this.anti_ship_weapons = anti_ship_weapons;
+  }
+};
 var Player = class extends CustomType {
-  constructor(name, ships) {
+  constructor(name, ships, craft) {
     super();
     this.name = name;
     this.ships = ships;
+    this.craft = craft;
   }
 };
 var Team = class extends CustomType {
@@ -5081,10 +5102,12 @@ function weapon_card(weapon) {
   if ($ instanceof AntiShipWeaponGunDetails) {
     let rounds_carried = $.rounds_carried;
     return gun_card(weapon, rounds_carried);
-  } else {
+  } else if ($ instanceof AntiShipWeaponContinuousDetails) {
     let shot_duration = $.shot_duration;
     let battle_short_shots = $.battle_short_shots;
     return continuous_card(weapon, shot_duration, battle_short_shots);
+  } else {
+    return div(toList([]), toList([]));
   }
 }
 function missile_card(missile) {
@@ -5154,6 +5177,50 @@ function ship_gun_damage_dealt(ship) {
   });
   let _pipe$3 = unwrap(_pipe$2, 0);
   return to_precision(_pipe$3, 2);
+}
+function craft_damage_dealt(craft) {
+  let _pipe = craft.anti_ship_weapons;
+  let _pipe$1 = map(_pipe, (w) => {
+    return w.damage_dealt;
+  });
+  let _pipe$2 = reduce(_pipe$1, (a, b) => {
+    return a + b;
+  });
+  let _pipe$3 = unwrap(_pipe$2, 0);
+  return to_precision(_pipe$3, 2);
+}
+function craft_card(craft) {
+  let damage_dealt = craft_damage_dealt(craft);
+  return div(
+    toList([class$("card")]),
+    toList([
+      div(
+        toList([class$("card-header")]),
+        toList([
+          p(toList([class$("card-header-title")]), toList([text3(craft.name)]))
+        ])
+      ),
+      div(
+        toList([class$("card-content")]),
+        toList([
+          div(
+            toList([class$("content")]),
+            toList([
+              text3(craft.class),
+              br(toList([])),
+              text3("Damage Dealt: " + float_to_string(damage_dealt)),
+              br(toList([])),
+              text3("Carried: " + to_string(craft.carried)),
+              br(toList([])),
+              text3("Lost: " + to_string(craft.lost)),
+              br(toList([])),
+              text3("Sorties: " + to_string(craft.sorties))
+            ])
+          )
+        ])
+      )
+    ])
+  );
 }
 function ship_damage_dealt(ship) {
   return ship_missile_damage_dealt(ship) + ship_gun_damage_dealt(ship);
@@ -5257,6 +5324,15 @@ function total_damage_dealt(ships) {
 }
 function player_box(player) {
   let total_damage = total_damage_dealt(player.ships);
+  let _block;
+  let _pipe = player.craft;
+  _block = map(_pipe, craft_card);
+  let craft_cards = _block;
+  let _block$1;
+  let _pipe$1 = player.ships;
+  _block$1 = map(_pipe$1, ship_card);
+  let ship_cards = _block$1;
+  let cards = append(ship_cards, craft_cards);
   return div(
     toList([class$("box")]),
     toList([
@@ -5275,10 +5351,7 @@ function player_box(player) {
                 )
               ])
             ),
-            (() => {
-              let _pipe = player.ships;
-              return map(_pipe, ship_card);
-            })()
+            cards
           )
         )
       )
@@ -9655,10 +9728,36 @@ var ParseTeamState = class extends CustomType {
   }
 };
 var ParsePlayerState = class extends CustomType {
-  constructor(name, ships) {
+  constructor(name, ships, craft) {
     super();
     this.name = name;
     this.ships = ships;
+    this.craft = craft;
+  }
+};
+var ParseCraftState = class extends CustomType {
+  constructor(name, class$2, carried, lost, sorties, anti_ship_weapons) {
+    super();
+    this.name = name;
+    this.class = class$2;
+    this.carried = carried;
+    this.lost = lost;
+    this.sorties = sorties;
+    this.anti_ship_weapons = anti_ship_weapons;
+  }
+};
+var ParseAntiShipCraftMissileState = class extends CustomType {
+  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hit, miss, soft_killed, hard_killed, sortied) {
+    super();
+    this.name = name;
+    this.damage_dealt = damage_dealt;
+    this.max_damage_per_round = max_damage_per_round;
+    this.rounds_fired = rounds_fired;
+    this.hit = hit;
+    this.miss = miss;
+    this.soft_killed = soft_killed;
+    this.hard_killed = hard_killed;
+    this.sortied = sortied;
   }
 };
 var ParseShipState = class extends CustomType {
@@ -9847,6 +9946,319 @@ function skip_tag_inner(loop$input, loop$depth) {
 }
 function skip_tag(input2) {
   return skip_tag_inner(input2, 0);
+}
+function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Name") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                new Some(name),
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hit,
+                _record.miss,
+                _record.soft_killed,
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalDamageDone") {
+      let next_input = $[0][1];
+      return try$(
+        parse_float_element(next_input),
+        (_use0) => {
+          let damage = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                new Some(damage),
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hit,
+                _record.miss,
+                _record.soft_killed,
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "MaxDamagePerShot") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let max_damage = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                new Some(max_damage),
+                _record.rounds_fired,
+                _record.hit,
+                _record.miss,
+                _record.soft_killed,
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "ShotsFired") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let rounds_fired = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                new Some(rounds_fired),
+                _record.hit,
+                _record.miss,
+                _record.soft_killed,
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "HitCount") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let hits = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                new Some(hits),
+                _record.miss,
+                _record.soft_killed,
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalSortied") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let sortied = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hit,
+                _record.miss,
+                _record.soft_killed,
+                _record.hard_killed,
+                new Some(sortied)
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Misses") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let miss = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hit,
+                new Some(miss),
+                _record.soft_killed,
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Softkills") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let soft_kill = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hit,
+                _record.miss,
+                new Some(soft_kill),
+                _record.hard_killed,
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Hardkills") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let hard_kill = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_anti_ship_craft_missile_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseAntiShipCraftMissileState(
+                _record.name,
+                _record.damage_dealt,
+                _record.max_damage_per_round,
+                _record.rounds_fired,
+                _record.hit,
+                _record.miss,
+                _record.soft_killed,
+                new Some(hard_kill),
+                _record.sortied
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_anti_ship_craft_missile_inner(parse_state, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseAntiShipCraftMissileState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hit instanceof Some && parse_state.miss instanceof Some && parse_state.soft_killed instanceof Some && parse_state.hard_killed instanceof Some && parse_state.sortied instanceof Some) {
+        let name = parse_state.name[0];
+        let damage_dealt = parse_state.damage_dealt[0];
+        let max_damage_per_round = parse_state.max_damage_per_round[0];
+        let rounds_fired = parse_state.rounds_fired[0];
+        let hit = parse_state.hit[0];
+        let miss = parse_state.miss[0];
+        let soft_killed = parse_state.soft_killed[0];
+        let hard_killed = parse_state.hard_killed[0];
+        let sortied = parse_state.sortied[0];
+        return new Ok(
+          [
+            new AntiShipWeapon(
+              name,
+              max_damage_per_round,
+              rounds_fired,
+              hit,
+              damage_dealt,
+              new AntiShipCraftMissileDetails(
+                sortied,
+                miss,
+                soft_killed,
+                hard_killed
+              )
+            ),
+            next_input
+          ]
+        );
+      } else {
+        return new Error2("Missing anti-ship craft missile data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(
+          toList(["Unexpected data at anti-ship craft missile: ", data])
+        )
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_anti_ship_craft_missile(input2) {
+  return parse_anti_ship_craft_missile_inner(
+    new ParseAntiShipCraftMissileState(
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None()
+    ),
+    input2
+  );
 }
 function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
   while (true) {
@@ -10980,6 +11392,346 @@ function parse_ships_inner(loop$ships, loop$input) {
 function parse_ships(input2) {
   return parse_ships_inner(toList([]), input2);
 }
+function parse_craft_strike_weapons_inner(craft_weapon_reports, input2) {
+  let $ = signal(input2);
+  if (!$.isOk()) {
+    let e = $[0];
+    return new Error2(input_error_to_string(e));
+  } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "DiscreteWeaponReport") {
+    let next_input = $[0][1];
+    return try$(
+      parse_anti_ship_weapon(next_input),
+      (_use0) => {
+        let missile = _use0[0];
+        let next_input_2 = _use0[1];
+        return parse_craft_strike_inner(
+          prepend(missile, craft_weapon_reports),
+          next_input_2
+        );
+      }
+    );
+  } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "CraftMissileReport") {
+    let next_input = $[0][1];
+    return try$(
+      parse_anti_ship_craft_missile(next_input),
+      (_use0) => {
+        let missile = _use0[0];
+        let next_input_2 = _use0[1];
+        return parse_craft_strike_inner(
+          prepend(missile, craft_weapon_reports),
+          next_input_2
+        );
+      }
+    );
+  } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+    let next_input = $[0][1];
+    return try$(
+      skip_tag(next_input),
+      (next_input_2) => {
+        return parse_craft_strike_inner(craft_weapon_reports, next_input_2);
+      }
+    );
+  } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+    let next_input = $[0][1];
+    return new Ok([craft_weapon_reports, next_input]);
+  } else if ($.isOk() && $[0][0] instanceof Data) {
+    let data = $[0][0][0];
+    return new Error2(
+      concat2(toList(["Unexpected data at craft strike: ", data]))
+    );
+  } else {
+    let next_input = $[0][1];
+    return parse_craft_strike_inner(craft_weapon_reports, next_input);
+  }
+}
+function parse_craft_strike_inner(loop$craft_weapon_reports, loop$input) {
+  while (true) {
+    let craft_weapon_reports = loop$craft_weapon_reports;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "GeneralWeapons") {
+      let next_input = $[0][1];
+      return try$(
+        parse_craft_strike_weapons(next_input),
+        (_use0) => {
+          let weapons = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_craft_strike_inner(weapons, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_craft_strike_inner(craft_weapon_reports, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([craft_weapon_reports, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at craft strike: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$craft_weapon_reports = craft_weapon_reports;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_craft_strike_weapons(input2) {
+  return parse_craft_strike_weapons_inner(toList([]), input2);
+}
+function parse_craft_strike(input2) {
+  return parse_craft_strike_inner(toList([]), input2);
+}
+function parse_craft_report_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "DesignName") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_craft_report_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseCraftState(
+                new Some(name),
+                _record.class,
+                _record.carried,
+                _record.lost,
+                _record.sorties,
+                _record.anti_ship_weapons
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "FrameName") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let class$2 = _use0[0];
+          let next_input$1 = _use0[1];
+          return parse_craft_report_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseCraftState(
+                _record.name,
+                new Some(class$2),
+                _record.carried,
+                _record.lost,
+                _record.sorties,
+                _record.anti_ship_weapons
+              );
+            })(),
+            next_input$1
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Carried") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let carried = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_craft_report_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseCraftState(
+                _record.name,
+                _record.class,
+                new Some(carried),
+                _record.lost,
+                _record.sorties,
+                _record.anti_ship_weapons
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Lost") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let lost = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_craft_report_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseCraftState(
+                _record.name,
+                _record.class,
+                _record.carried,
+                new Some(lost),
+                _record.sorties,
+                _record.anti_ship_weapons
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "SortiesFlown") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let sorties = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_craft_report_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseCraftState(
+                _record.name,
+                _record.class,
+                _record.carried,
+                _record.lost,
+                new Some(sorties),
+                _record.anti_ship_weapons
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "StrikeReport") {
+      let next_input = $[0][1];
+      return try$(
+        parse_craft_strike(next_input),
+        (_use0) => {
+          let weapons = _use0[0];
+          let next_input$1 = _use0[1];
+          return parse_craft_report_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseCraftState(
+                _record.name,
+                _record.class,
+                _record.carried,
+                _record.lost,
+                _record.sorties,
+                weapons
+              );
+            })(),
+            next_input$1
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_craft_report_inner(parse_state, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseCraftState && parse_state.name instanceof Some && parse_state.class instanceof Some && parse_state.carried instanceof Some && parse_state.lost instanceof Some && parse_state.sorties instanceof Some) {
+        let name = parse_state.name[0];
+        let class$2 = parse_state.class[0];
+        let carried = parse_state.carried[0];
+        let lost = parse_state.lost[0];
+        let sorties = parse_state.sorties[0];
+        let anti_ship_weapons = parse_state.anti_ship_weapons;
+        return new Ok(
+          [
+            new Craft(name, class$2, carried, lost, sorties, anti_ship_weapons),
+            next_input
+          ]
+        );
+      } else {
+        return new Error2("Missing craft data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at craft: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_craft_report(input2) {
+  return parse_craft_report_inner(
+    new ParseCraftState(
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      new None(),
+      toList([])
+    ),
+    input2
+  );
+}
+function parse_craft_inner(loop$craft, loop$input) {
+  while (true) {
+    let craft = loop$craft;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "CraftBattleReport") {
+      let next_input = $[0][1];
+      return try$(
+        parse_craft_report(next_input),
+        (_use0) => {
+          let new_craft = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_craft_inner(prepend(new_craft, craft), next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_craft_inner(craft, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([craft, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at craft: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$craft = craft;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_craft(input2) {
+  return parse_craft_inner(toList([]), input2);
+}
 function parse_player_inner(loop$parse_state, loop$input) {
   while (true) {
     let parse_state = loop$parse_state;
@@ -10998,7 +11750,11 @@ function parse_player_inner(loop$parse_state, loop$input) {
           return parse_player_inner(
             (() => {
               let _record = parse_state;
-              return new ParsePlayerState(new Some(name), _record.ships);
+              return new ParsePlayerState(
+                new Some(name),
+                _record.ships,
+                _record.craft
+              );
             })(),
             next_input_2
           );
@@ -11014,7 +11770,23 @@ function parse_player_inner(loop$parse_state, loop$input) {
           return parse_player_inner(
             (() => {
               let _record = parse_state;
-              return new ParsePlayerState(_record.name, ships);
+              return new ParsePlayerState(_record.name, ships, _record.craft);
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Craft") {
+      let next_input = $[0][1];
+      return try$(
+        parse_craft(next_input),
+        (_use0) => {
+          let craft = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_player_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParsePlayerState(_record.name, _record.ships, craft);
             })(),
             next_input_2
           );
@@ -11033,7 +11805,8 @@ function parse_player_inner(loop$parse_state, loop$input) {
       if (parse_state instanceof ParsePlayerState && parse_state.name instanceof Some) {
         let name = parse_state.name[0];
         let ships = parse_state.ships;
-        return new Ok([new Player(name, ships), next_input]);
+        let craft = parse_state.craft;
+        return new Ok([new Player(name, ships, craft), next_input]);
       } else {
         return new Error2("Missing player data");
       }
@@ -11050,7 +11823,10 @@ function parse_player_inner(loop$parse_state, loop$input) {
   }
 }
 function parse_player(input2) {
-  return parse_player_inner(new ParsePlayerState(new None(), toList([])), input2);
+  return parse_player_inner(
+    new ParsePlayerState(new None(), toList([]), toList([])),
+    input2
+  );
 }
 function parse_players_inner(loop$players, loop$input) {
   while (true) {

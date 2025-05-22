@@ -17,6 +17,12 @@ pub type AntiShipWeapon {
 pub type AntiShipWeaponTypeDetails {
   AntiShipWeaponGunDetails(rounds_carried: Int)
   AntiShipWeaponContinuousDetails(shot_duration: Float, battle_short_shots: Int)
+  AntiShipCraftMissileDetails(
+    sortied: Int,
+    miss: Int,
+    soft_killed: Int,
+    hard_killed: Int,
+  )
 }
 
 pub type Missile {
@@ -42,8 +48,19 @@ pub type Ship {
   )
 }
 
+pub type Craft {
+  Craft(
+    name: String,
+    class: String,
+    carried: Int,
+    lost: Int,
+    sorties: Int,
+    anti_ship_weapons: List(AntiShipWeapon),
+  )
+}
+
 pub type Player {
-  Player(name: String, ships: List(Ship))
+  Player(name: String, ships: List(Ship), craft: List(Craft))
 }
 
 pub type Team {
@@ -58,88 +75,114 @@ pub fn dummy_report() {
   Report(
     winning_team: TeamA,
     team_a: Team(players: [
-      Player(name: "Alice", ships: [
-        Ship(
-          name: "Ship A",
-          class: "Class A",
-          damage_taken: 80,
-          anti_ship_weapons: [
-            AntiShipWeapon(
-              name: "Cannon",
-              damage_dealt: 100.0,
-              max_damage_per_round: 50,
-              rounds_fired: 3,
-              hits: 2,
-              type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
-            ),
-            AntiShipWeapon(
-              name: "Beam",
-              damage_dealt: 200.0,
-              max_damage_per_round: 100,
-              rounds_fired: 5,
-              hits: 3,
-              type_details: AntiShipWeaponContinuousDetails(
-                shot_duration: 2.0,
-                battle_short_shots: 1,
+      Player(
+        name: "Alice",
+        ships: [
+          Ship(
+            name: "Ship A",
+            class: "Class A",
+            damage_taken: 80,
+            anti_ship_weapons: [
+              AntiShipWeapon(
+                name: "Cannon",
+                damage_dealt: 100.0,
+                max_damage_per_round: 50,
+                rounds_fired: 3,
+                hits: 2,
+                type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
               ),
-            ),
-          ],
-          anti_ship_missiles: [
-            Missile(
-              name: "Missile A",
-              damage_dealt: 300.0,
-              carried: 10,
-              expended: 6,
-              hit: 3,
-              miss: 1,
-              soft_killed: 1,
-              hard_killed: 2,
-            ),
-          ],
-        ),
-      ]),
+              AntiShipWeapon(
+                name: "Beam",
+                damage_dealt: 200.0,
+                max_damage_per_round: 100,
+                rounds_fired: 5,
+                hits: 3,
+                type_details: AntiShipWeaponContinuousDetails(
+                  shot_duration: 2.0,
+                  battle_short_shots: 1,
+                ),
+              ),
+            ],
+            anti_ship_missiles: [
+              Missile(
+                name: "Missile A",
+                damage_dealt: 300.0,
+                carried: 10,
+                expended: 6,
+                hit: 3,
+                miss: 1,
+                soft_killed: 1,
+                hard_killed: 2,
+              ),
+            ],
+          ),
+        ],
+        craft: [
+          Craft(
+            name: "Craft A",
+            class: "Class A",
+            carried: 5,
+            lost: 2,
+            sorties: 10,
+            anti_ship_weapons: [],
+          ),
+        ],
+      ),
     ]),
     team_b: Team(players: [
-      Player(name: "Bob", ships: [
-        Ship(
-          name: "Ship B",
-          class: "Class B",
-          damage_taken: 80,
-          anti_ship_weapons: [
-            AntiShipWeapon(
-              name: "Torpedo",
-              damage_dealt: 150.0,
-              max_damage_per_round: 50,
-              rounds_fired: 3,
-              hits: 2,
-              type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
-            ),
-            AntiShipWeapon(
-              name: "Plasma Beam",
-              damage_dealt: 250.0,
-              max_damage_per_round: 100,
-              rounds_fired: 5,
-              hits: 3,
-              type_details: AntiShipWeaponContinuousDetails(
-                shot_duration: 2.0,
-                battle_short_shots: 1,
+      Player(
+        name: "Bob",
+        ships: [
+          Ship(
+            name: "Ship B",
+            class: "Class B",
+            damage_taken: 80,
+            anti_ship_weapons: [
+              AntiShipWeapon(
+                name: "Torpedo",
+                damage_dealt: 150.0,
+                max_damage_per_round: 50,
+                rounds_fired: 3,
+                hits: 2,
+                type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
               ),
-            ),
-          ],
-          anti_ship_missiles: [
-            Missile(
-              name: "Missile B",
-              damage_dealt: 350.0,
-              carried: 20,
-              expended: 12,
-              hit: 5,
-              miss: 2,
-              soft_killed: 2,
-              hard_killed: 3,
-            ),
-          ],
-        ),
-      ]),
+              AntiShipWeapon(
+                name: "Plasma Beam",
+                damage_dealt: 250.0,
+                max_damage_per_round: 100,
+                rounds_fired: 5,
+                hits: 3,
+                type_details: AntiShipWeaponContinuousDetails(
+                  shot_duration: 2.0,
+                  battle_short_shots: 1,
+                ),
+              ),
+            ],
+            anti_ship_missiles: [
+              Missile(
+                name: "Missile B",
+                damage_dealt: 350.0,
+                carried: 20,
+                expended: 12,
+                hit: 5,
+                miss: 2,
+                soft_killed: 2,
+                hard_killed: 3,
+              ),
+            ],
+          ),
+        ],
+        craft: [
+          Craft(
+            name: "Craft B",
+            class: "Class B",
+            carried: 10,
+            lost: 5,
+            sorties: 20,
+            anti_ship_weapons: [],
+          ),
+        ],
+      ),
     ]),
   )
 }

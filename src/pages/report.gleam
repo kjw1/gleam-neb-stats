@@ -1,6 +1,7 @@
 import data/report.{
-  type AntiShipWeapon, type Missile, type Player, type Report, type Ship,
-  type Team, AntiShipWeaponGunDetails, TeamA, TeamB,
+  type AntiShipWeapon, type Craft, type Missile, type Player, type Report,
+  type Ship, type Team, AntiShipCraftMissileDetails, AntiShipWeaponGunDetails,
+  TeamA, TeamB,
 }
 import gleam/float
 import gleam/int
@@ -98,6 +99,9 @@ fn team_box(team: Team, team_id: report.TeamAOrB, winner: report.TeamAOrB) {
 
 fn player_box(player: Player) {
   let total_damage = total_damage_dealt(player.ships)
+  let craft_cards = player.craft |> list.map(craft_card)
+  let ship_cards = player.ships |> list.map(ship_card)
+  let cards = list.append(ship_cards, craft_cards)
   div([class("box")], [
     div([], [
       h5([class("title is-5")], [text(player.name)]),
@@ -110,7 +114,7 @@ fn player_box(player: Player) {
           <> ")",
         ),
       ]),
-      ..{ player.ships |> list.map(ship_card) }
+      ..cards
     ]),
   ])
 }
@@ -133,6 +137,28 @@ fn ship_card(ship: Ship) {
   ])
 }
 
+fn craft_card(craft: Craft) {
+  let damage_dealt = craft_damage_dealt(craft)
+  div([class("card")], [
+    div([class("card-header")], [
+      p([class("card-header-title")], [text(craft.name)]),
+    ]),
+    div([class("card-content")], [
+      div([class("content")], [
+        text(craft.class),
+        br([]),
+        text("Damage Dealt: " <> float.to_string(damage_dealt)),
+        br([]),
+        text("Carried: " <> int.to_string(craft.carried)),
+        br([]),
+        text("Lost: " <> int.to_string(craft.lost)),
+        br([]),
+        text("Sorties: " <> int.to_string(craft.sorties)),
+      ]),
+    ]),
+  ])
+}
+
 fn weapon_card(weapon: AntiShipWeapon) {
   case weapon.type_details {
     AntiShipWeaponGunDetails(rounds_carried: rounds_carried) ->
@@ -141,6 +167,12 @@ fn weapon_card(weapon: AntiShipWeapon) {
       shot_duration: shot_duration,
       battle_short_shots: battle_short_shots,
     ) -> continuous_card(weapon, shot_duration, battle_short_shots)
+    AntiShipCraftMissileDetails(
+      sortied: _,
+      miss: _,
+      soft_killed: _,
+      hard_killed: _,
+    ) -> div([], [])
   }
 }
 
@@ -294,6 +326,14 @@ fn ship_missile_damage_dealt(ship: Ship) {
 
 fn ship_gun_damage_dealt(ship: Ship) {
   ship.anti_ship_weapons
+  |> list.map(fn(w) { w.damage_dealt })
+  |> list.reduce(fn(a, b) { a +. b })
+  |> result.unwrap(0.0)
+  |> float.to_precision(2)
+}
+
+fn craft_damage_dealt(craft: Craft) {
+  craft.anti_ship_weapons
   |> list.map(fn(w) { w.damage_dealt })
   |> list.reduce(fn(a, b) { a +. b })
   |> result.unwrap(0.0)
