@@ -5,13 +5,17 @@ import data/report.{
   Report, Ship, Team, TeamA, TeamB,
 }
 import gleam/dict.{type Dict}
-import gleam/float
-import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import gleam/string
-import xmlm.{type Input, type Name, type Tag, ElementStart, Name, Tag}
+import parse_helpers.{
+  type ParsedValue, ParseValueFloat, ParseValueInt, ParseValueList,
+  ParseValueString, ParsedValueDecoder, ParsedValueFloat, ParsedValueInt,
+  ParsedValueList, ParsedValueString, parse_float_element, parse_int_element,
+  parse_map, parse_string_element, skip_tag,
+}
+import xmlm.{type Input, type Tag, ElementStart, Name, Tag}
 
 pub fn parse_report(content: String) {
   content
@@ -311,55 +315,6 @@ fn parse_player_inner(parse_state, input) -> Result(#(Player, Input), String) {
       Error(string.concat(["Unexpected data at player: ", data]))
     Ok(#(xmlm.Dtd(_), next_input)) ->
       parse_player_inner(parse_state, next_input)
-  }
-}
-
-fn parse_string_element(maybe_name, input) -> Result(#(String, Input), String) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(_, _)), _)) ->
-      Error("unexpected nested element for string element")
-    Ok(#(xmlm.ElementEnd, next_input)) -> {
-      case maybe_name {
-        Some(name) -> Ok(#(name, next_input))
-        _ -> Error("Missing player name")
-      }
-    }
-    Ok(#(xmlm.Data(name), next_input)) ->
-      parse_string_element(Some(name), next_input)
-    Ok(#(xmlm.Dtd(_), next_input)) ->
-      parse_string_element(maybe_name, next_input)
-  }
-}
-
-fn parse_int_element(input) -> Result(#(Int, Input), String) {
-  case parse_string_element(None, input) {
-    Ok(#(string_value, next_input)) -> {
-      use value <- try(result.replace_error(
-        int.parse(string_value),
-        "Failed to parse float",
-      ))
-      Ok(#(value, next_input))
-    }
-    Error(e) -> Error(e)
-  }
-}
-
-fn parse_float_element(input) -> Result(#(Float, Input), String) {
-  case parse_string_element(None, input) {
-    Ok(#(string_value, next_input)) -> {
-      use value <- try(result.replace_error(
-        result.or(
-          float.parse(string_value),
-          result.then(int.parse(string_value), fn(int_damage) {
-            Ok(int.to_float(int_damage))
-          }),
-        ),
-        "Failed to parse float",
-      ))
-      Ok(#(value, next_input))
-    }
-    Error(e) -> Error(e)
   }
 }
 
@@ -901,8 +856,7 @@ fn parse_anti_ship_inner(
 }
 
 fn parse_anti_ship_weapons(input) {
-  let parse_result =
-    parse_map(anti_ship_weapons_field_config(), dict.new(), input)
+  let parse_result = parse_map(anti_ship_weapons_field_config(), input)
   case parse_result {
     Ok(#(parsed_fields, next_input)) -> {
       let discrete_weapons =
@@ -1148,7 +1102,7 @@ fn anti_ship_weapon_decoder(
 }
 
 fn parse_anti_ship_weapon(input) {
-  let parse_result = parse_map(anti_ship_field_config(), dict.new(), input)
+  let parse_result = parse_map(anti_ship_field_config(), input)
   case parse_result {
     Ok(#(parsed_fields, next_input)) -> {
       use weapon <- try(anti_ship_weapon_decoder(parsed_fields))
@@ -1184,7 +1138,7 @@ fn parse_strike_inner(
 }
 
 fn parse_missiles(input) {
-  let parse_result = parse_map(parse_missiles_field_config(), dict.new(), input)
+  let parse_result = parse_map(parse_missiles_field_config(), input)
   case parse_result {
     Ok(#(parsed_missiles, next_input)) -> {
       case
@@ -1270,141 +1224,5 @@ fn missile_decoder(parsed_fields) {
         hard_killed: hard_killed,
       ))
     _, _, _, _, _, _, _, _ -> Error("Missing missile data")
-  }
-}
-
-type ParsedValueDecoder(parsed_type) {
-  ParsedValueDecoder(
-    fn(Tag, Dict(Option(Tag), ParsedValue(parsed_type))) ->
-      Result(parsed_type, String),
-  )
-}
-
-type ParseValue(contained) {
-  ParseValueString
-  ParseValueInt
-  ParseValueFloat
-  ParseValueList(
-    Dict(Option(Tag), ParseValue(contained)),
-    ParsedValueDecoder(contained),
-  )
-  ParseValueSubElement(
-    Dict(Option(Tag), ParseValue(contained)),
-    ParsedValueDecoder(contained),
-  )
-}
-
-type ParsedValue(contained) {
-  ParsedValueString(String)
-  ParsedValueInt(Int)
-  ParsedValueFloat(Float)
-  ParsedValueList(List(contained))
-  ParsedValueSubElement(contained)
-}
-
-fn parse_map(
-  field_config: Dict(Option(Tag), ParseValue(contained)),
-  parsed_fields: Dict(Option(Tag), ParsedValue(contained)),
-  input: Input,
-) -> Result(#(Dict(Option(Tag), ParsedValue(contained)), Input), String) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
-      case dict.get(field_config, Some(tag)) {
-        Ok(ParseValueSubElement(sub_field_config, ParsedValueDecoder(decoder))) -> {
-          use #(sub_parsed_fields, next_input_2) <- try(parse_map(
-            sub_field_config,
-            dict.new(),
-            next_input,
-          ))
-          use new_decoded_value <- try(decoder(tag, sub_parsed_fields))
-          let next_parsed_fields =
-            dict.insert(
-              parsed_fields,
-              Some(tag),
-              ParsedValueSubElement(new_decoded_value),
-            )
-          echo next_parsed_fields
-          parse_map(field_config, next_parsed_fields, next_input_2)
-        }
-        Ok(ParseValueList(sub_field_config, ParsedValueDecoder(decoder))) -> {
-          use #(sub_parsed_fields, next_input_2) <- try(parse_map(
-            sub_field_config,
-            dict.new(),
-            next_input,
-          ))
-          use new_decoded_value <- try(decoder(tag, sub_parsed_fields))
-          let next_parsed_fields =
-            dict.upsert(parsed_fields, Some(tag), fn(maybe_existing_value) {
-              case maybe_existing_value {
-                Some(ParsedValueList(existing_parsed_fields)) ->
-                  ParsedValueList([new_decoded_value, ..existing_parsed_fields])
-                Some(_) -> ParsedValueList([new_decoded_value])
-                None -> ParsedValueList([new_decoded_value])
-              }
-            })
-          echo next_parsed_fields
-          parse_map(field_config, next_parsed_fields, next_input_2)
-        }
-        Ok(ParseValueString) -> {
-          use #(value, next_input_2) <- try(parse_string_element(
-            None,
-            next_input,
-          ))
-          let next_parsed_fields =
-            dict.insert(parsed_fields, Some(tag), ParsedValueString(value))
-          parse_map(field_config, next_parsed_fields, next_input_2)
-        }
-        Ok(ParseValueInt) -> {
-          use #(value, next_input_2) <- try(parse_int_element(next_input))
-          let next_parsed_fields =
-            dict.insert(parsed_fields, Some(tag), ParsedValueInt(value))
-          parse_map(field_config, next_parsed_fields, next_input_2)
-        }
-        Ok(ParseValueFloat) -> {
-          use #(value, next_input_2) <- try(parse_float_element(next_input))
-          let next_parsed_fields =
-            dict.insert(parsed_fields, Some(tag), ParsedValueFloat(value))
-          parse_map(field_config, next_parsed_fields, next_input_2)
-        }
-        Error(Nil) -> {
-          echo #("Skipping", tag)
-          use next_input <- try(skip_tag(next_input))
-          parse_map(field_config, parsed_fields, next_input)
-        }
-      }
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) -> {
-      Ok(#(parsed_fields, next_input))
-    }
-    Ok(#(xmlm.Data(data), next_input)) -> {
-      let next_parsed_fields =
-        dict.insert(parsed_fields, None, ParsedValueString(data))
-      parse_map(field_config, next_parsed_fields, next_input)
-    }
-
-    Ok(#(xmlm.Dtd(_), next_input)) -> {
-      parse_map(field_config, parsed_fields, next_input)
-    }
-  }
-}
-
-fn skip_tag(input) {
-  skip_tag_inner(input, 0)
-}
-
-fn skip_tag_inner(input, depth) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      //echo #("Skipping sub tag: ", tag)
-      skip_tag_inner(next_input, depth + 1)
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) ->
-      case depth {
-        0 -> Ok(next_input)
-        _ -> skip_tag_inner(next_input, depth - 1)
-      }
-    Ok(#(_, next_input)) -> skip_tag_inner(next_input, depth)
   }
 }
