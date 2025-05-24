@@ -9,7 +9,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import lustre/attribute.{class}
-import lustre/element/html.{br, div, h5, h6, p, text}
+import lustre/element/html.{br, div, h4, h5, h6, p, text}
 import lustre/event
 
 pub type DetailFocus {
@@ -83,6 +83,12 @@ fn ship_detail(ship: Ship) {
   let gun_cards = ship.anti_ship_weapons |> list.map(weapon_card)
   let gun_grid =
     div([class("fixed-grid has-4-cols")], [div([class("grid")], gun_cards)])
+  let defensive_weapon_cards =
+    ship.defensive_weapons |> list.map(defensive_weapon_card)
+  let defensive_weapon_grid =
+    div([class("fixed-grid has-4-cols")], [
+      div([class("grid")], defensive_weapon_cards),
+    ])
   div([class("column is-three-fifths")], [
     div([], [
       p([class("title is-3")], [text(ship.name)]),
@@ -105,10 +111,12 @@ fn ship_detail(ship: Ship) {
           <> float.to_string(ship_missile_damage_dealt(ship)),
         ),
       ]),
-      p([class("title is-4")], [text("Guns")]),
+      h4([class("title is-4")], [text("Guns")]),
       gun_grid,
-      p([class("title is-4")], [text("Missiles")]),
+      h4([class("title is-4")], [text("Missiles")]),
       missile_grid,
+      h4([class("title is-4")], [text("Defensive Weapons")]),
+      defensive_weapon_grid,
     ]),
   ])
 }
@@ -209,6 +217,35 @@ fn weapon_card(weapon: AntiShipWeapon) {
   }
 }
 
+fn defensive_weapon_card(weapon: report.DefensiveWeapon) {
+  let accuracy =
+    {
+      int.to_float(weapon.weapon.hits)
+      /. int.to_float(weapon.weapon.rounds_fired)
+    }
+    |> float.to_precision(2)
+    |> float.to_string
+  div([class("cell")], [
+    p([class("title is-5")], [text(weapon.weapon.name)]),
+    p([], [
+      text("Count: " <> int.to_string(weapon.count)),
+      br([]),
+      text("Rounds Fired: " <> int.to_string(weapon.weapon.rounds_fired)),
+      br([]),
+      text("Hits: " <> int.to_string(weapon.weapon.hits)),
+      br([]),
+      text("Accuracy: " <> accuracy),
+      br([]),
+      text(
+        "Targets Destroyed/Assigned: "
+        <> int.to_string(weapon.weapon.targets_destroyed)
+        <> "/"
+        <> int.to_string(weapon.weapon.targets_assigned),
+      ),
+    ]),
+  ])
+}
+
 fn continuous_card(
   weapon: AntiShipWeapon,
   shot_duration: Float,
@@ -245,7 +282,7 @@ fn continuous_card(
     |> float.to_string
 
   let max_damage_per_second =
-    int.to_float(weapon.max_damage_per_round) /. shot_duration
+    weapon.max_damage_per_round /. shot_duration
     |> float.to_precision(2)
     |> float.to_string
   div([class("cell")], [
@@ -291,7 +328,7 @@ fn gun_card(weapon: AntiShipWeapon, rounds_carried: Int) {
       text("Damage Dealt: " <> damage_string),
       br([]),
       text(
-        "Max Damage Per Round: " <> int.to_string(weapon.max_damage_per_round),
+        "Max Damage Per Round: " <> float.to_string(weapon.max_damage_per_round),
       ),
       br([]),
       text("Rounds Carried: " <> int.to_string(rounds_carried)),

@@ -6,11 +6,15 @@ pub type TeamAOrB {
 pub type AntiShipWeapon {
   AntiShipWeapon(
     name: String,
-    max_damage_per_round: Int,
+    max_damage_per_round: Float,
     rounds_fired: Int,
     hits: Int,
     damage_dealt: Float,
     type_details: AntiShipWeaponTypeDetails,
+    targets_assigned: Int,
+    //used for defensive weapons
+    targets_destroyed: Int,
+    //used for defensive weapons
   )
 }
 
@@ -45,7 +49,12 @@ pub type Ship {
     damage_taken: Int,
     anti_ship_weapons: List(AntiShipWeapon),
     anti_ship_missiles: List(Missile),
+    defensive_weapons: List(DefensiveWeapon),
   )
+}
+
+pub type DefensiveWeapon {
+  DefensiveWeapon(count: Int, weapon: AntiShipWeapon)
 }
 
 pub type Craft {
@@ -86,17 +95,21 @@ pub fn dummy_report() {
               AntiShipWeapon(
                 name: "Cannon",
                 damage_dealt: 100.0,
-                max_damage_per_round: 50,
+                max_damage_per_round: 50.0,
                 rounds_fired: 3,
                 hits: 2,
                 type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
+                targets_assigned: 0,
+                targets_destroyed: 0,
               ),
               AntiShipWeapon(
                 name: "Beam",
                 damage_dealt: 200.0,
-                max_damage_per_round: 100,
+                max_damage_per_round: 100.0,
                 rounds_fired: 5,
                 hits: 3,
+                targets_assigned: 0,
+                targets_destroyed: 0,
                 type_details: AntiShipWeaponContinuousDetails(
                   shot_duration: 2.0,
                   battle_short_shots: 1,
@@ -113,6 +126,21 @@ pub fn dummy_report() {
                 miss: 1,
                 soft_killed: 1,
                 hard_killed: 2,
+              ),
+            ],
+            defensive_weapons: [
+              DefensiveWeapon(
+                count: 2,
+                weapon: AntiShipWeapon(
+                  name: "Defensive Cannon",
+                  damage_dealt: 50.0,
+                  max_damage_per_round: 25.0,
+                  rounds_fired: 4,
+                  hits: 1,
+                  targets_assigned: 0,
+                  targets_destroyed: 0,
+                  type_details: AntiShipWeaponGunDetails(rounds_carried: 10),
+                ),
               ),
             ],
           ),
@@ -137,25 +165,44 @@ pub fn dummy_report() {
             name: "Ship B",
             class: "Class B",
             damage_taken: 80,
+            defensive_weapons: [
+              DefensiveWeapon(
+                count: 3,
+                weapon: AntiShipWeapon(
+                  name: "Defensive Laser",
+                  damage_dealt: 30.0,
+                  max_damage_per_round: 15.0,
+                  rounds_fired: 6,
+                  hits: 2,
+                  type_details: AntiShipWeaponGunDetails(rounds_carried: 8),
+                  targets_assigned: 0,
+                  targets_destroyed: 0,
+                ),
+              ),
+            ],
             anti_ship_weapons: [
               AntiShipWeapon(
                 name: "Torpedo",
                 damage_dealt: 150.0,
-                max_damage_per_round: 50,
+                max_damage_per_round: 50.0,
                 rounds_fired: 3,
                 hits: 2,
                 type_details: AntiShipWeaponGunDetails(rounds_carried: 5),
+                targets_assigned: 0,
+                targets_destroyed: 0,
               ),
               AntiShipWeapon(
                 name: "Plasma Beam",
                 damage_dealt: 250.0,
-                max_damage_per_round: 100,
+                max_damage_per_round: 100.0,
                 rounds_fired: 5,
                 hits: 3,
                 type_details: AntiShipWeaponContinuousDetails(
                   shot_duration: 2.0,
                   battle_short_shots: 1,
                 ),
+                targets_assigned: 0,
+                targets_destroyed: 0,
               ),
             ],
             anti_ship_missiles: [
