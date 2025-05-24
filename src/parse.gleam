@@ -11,11 +11,16 @@ import gleam/result.{try}
 import gleam/string
 import parse_helpers.{
   type ParsedValue, ParseValueFloat, ParseValueInt, ParseValueList,
-  ParseValueString, ParsedValueDecoder, ParsedValueFloat, ParsedValueInt,
-  ParsedValueList, ParsedValueString, parse_float_element, parse_int_element,
-  parse_map, parse_string_element, skip_tag,
+  ParseValueString, ParseValueSubElement, ParsedValueDecoder, ParsedValueFloat,
+  ParsedValueInt, ParsedValueList, ParsedValueString, parse_float_element,
+  parse_int_element, parse_map, parse_string_element, skip_tag,
 }
 import xmlm.{type Input, type Tag, ElementStart, Name, Tag}
+
+type ParseTarget {
+  WeaponTarget(AntiShipWeapon)
+  WeaponListTarget(List(AntiShipWeapon))
+}
 
 pub fn parse_report(content: String) {
   content
@@ -509,7 +514,14 @@ fn parse_craft_strike_weapons_inner(
       next_input,
     )) -> {
       use #(missile, next_input_2) <- try(parse_anti_ship_weapon(next_input))
-      parse_craft_strike_inner([missile, ..craft_weapon_reports], next_input_2)
+      case missile {
+        WeaponTarget(weapon) ->
+          parse_craft_strike_inner(
+            [weapon, ..craft_weapon_reports],
+            next_input_2,
+          )
+        _ -> Error("Unexpected weapon type in craft strike")
+      }
     }
     Ok(#(
       ElementStart(Tag(
@@ -774,7 +786,9 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
       )
     }
     Ok(#(ElementStart(Tag(Name("", "AntiShip"), _)), next_input)) -> {
-      use #(weapons, next_input) <- try(parse_anti_ship(next_input))
+      echo "Parsing anti-ship weapons"
+      use #(weapons, next_input) <- try(parse_anti_ship_element(next_input))
+      echo weapons
       parse_ship_inner(
         ParseShipState(..parse_state, anti_ship_weapons: weapons),
         next_input,
@@ -829,43 +843,55 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
   }
 }
 
-fn parse_anti_ship(input) {
-  parse_anti_ship_inner([], input)
+fn anti_ship_element_field_config() {
+  dict.from_list([
+    #(
+      Some(Tag(Name("", "Weapons"), [])),
+      ParseValueSubElement(
+        anti_ship_weapons_field_config(),
+        ParsedValueDecoder(anti_ship_weapons_child_decoder),
+      ),
+    ),
+  ])
 }
 
-fn parse_anti_ship_inner(
-  anti_ship: List(AntiShipWeapon),
+fn parse_anti_ship_element(
   input: Input,
 ) -> Result(#(List(AntiShipWeapon), Input), String) {
-  case xmlm.signal(input) {
-    Error(e) -> Error(xmlm.input_error_to_string(e))
-    Ok(#(ElementStart(Tag(Name("", "Weapons"), _)), next_input)) -> {
-      use #(weapons, next_input_2) <- try(parse_anti_ship_weapons(next_input))
-      parse_anti_ship_inner(weapons, next_input_2)
-    }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
-      use next_input_2 <- try(skip_tag(next_input))
-      parse_anti_ship_inner(anti_ship, next_input_2)
-    }
-    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(anti_ship, next_input))
-    Ok(#(xmlm.Data(data), _)) ->
-      Error(string.concat(["Unexpected data at anti ship: ", data]))
-    Ok(#(xmlm.Dtd(_), next_input)) ->
-      parse_anti_ship_inner(anti_ship, next_input)
-  }
-}
-
-fn parse_anti_ship_weapons(input) {
-  let parse_result = parse_map(anti_ship_weapons_field_config(), input)
+  let parse_result = parse_map(anti_ship_element_field_config(), input, False)
+  echo parse_result
   case parse_result {
     Ok(#(parsed_fields, next_input)) -> {
       let discrete_weapons =
-        get_parsed_discrete_weapons(parsed_fields) |> result.unwrap([])
+        get_parsed_discrete_weapons(parsed_fields)
+        |> result.unwrap([])
       let continuous_weapons =
-        get_parsed_continuous_weapons(parsed_fields) |> result.unwrap([])
+        get_parsed_continuous_weapons(parsed_fields)
+        |> result.unwrap([])
       Ok(#(list.append(discrete_weapons, continuous_weapons), next_input))
     }
     Error(e) -> Error(e)
+  }
+}
+
+fn anti_ship_weapons_child_decoder(
+  tag,
+  parsed_fields,
+) -> Result(ParseTarget, String) {
+  echo tag
+  case tag {
+    Tag(Name("", "Weapons"), []) -> {
+      let weapons_result =
+        parsed_fields
+        |> dict.get(Some(Tag(Name("", "Weapons"), [])))
+      case weapons_result {
+        Ok(parse_helpers.ParsedValueSubElement(weapons)) -> {
+          Ok(weapons)
+        }
+        _ -> Error("Missing weapons")
+      }
+    }
+    _ -> Error("Unexpected tag for anti ship weapons")
   }
 }
 
@@ -888,9 +914,20 @@ fn get_parsed_continuous_weapons(
       ),
     )
   {
-    Ok(ParsedValueList(weapons)) -> Ok(weapons)
+    Ok(ParsedValueList(weapon_targets)) -> {
+      let weapons =
+        weapon_targets
+        |> list.filter_map(fn(target) {
+          case target {
+            WeaponTarget(weapon) -> Ok(weapon)
+            _ -> Error(Nil)
+          }
+        })
+
+      Ok(weapons)
+    }
     _ -> {
-      echo parsed_fields
+      echo #("Failed to parse continuous weapons", parsed_fields)
       Error("Missing continuous weapons")
     }
   }
@@ -915,9 +952,20 @@ fn get_parsed_discrete_weapons(
       ),
     )
   {
-    Ok(ParsedValueList(weapons)) -> Ok(weapons)
+    Ok(ParsedValueList(weapon_targets)) -> {
+      let weapons =
+        weapon_targets
+        |> list.filter_map(fn(target) {
+          case target {
+            WeaponTarget(weapon) -> Ok(weapon)
+            _ -> Error(Nil)
+          }
+        })
+
+      Ok(weapons)
+    }
     _ -> {
-      echo parsed_fields
+      echo #("Failed to parse discrete weapons", parsed_fields)
       Error("Missing discrete weapons")
     }
   }
@@ -965,7 +1013,7 @@ fn anti_ship_weapons_field_config() {
 fn anti_ship_weapon_continuous_child_decoder(
   tag,
   parsed_fields,
-) -> Result(AntiShipWeapon, String) {
+) -> Result(ParseTarget, String) {
   case tag {
     Tag(
       Name("", "WeaponReport"),
@@ -1021,7 +1069,7 @@ fn anti_ship_continuous_field_config() {
 
 fn anti_ship_continuous_weapon_decoder(
   parsed_fields: Dict(Option(Tag), ParsedValue(a)),
-) -> Result(AntiShipWeapon, String) {
+) -> Result(ParseTarget, String) {
   case
     dict.get(parsed_fields, Some(Tag(Name("", "Name"), []))),
     dict.get(parsed_fields, Some(Tag(Name("", "TotalDamageDone"), []))),
@@ -1039,17 +1087,19 @@ fn anti_ship_continuous_weapon_decoder(
       Ok(ParsedValueFloat(shot_duration)),
       Ok(ParsedValueInt(battle_short_shots))
     -> {
-      Ok(AntiShipWeapon(
-        name: name,
-        damage_dealt: damage_dealt,
-        max_damage_per_round: max_damage_per_round,
-        type_details: AntiShipWeaponContinuousDetails(
-          shot_duration: shot_duration,
-          battle_short_shots: battle_short_shots,
-        ),
-        rounds_fired: rounds_fired,
-        hits: hits,
-      ))
+      Ok(
+        WeaponTarget(AntiShipWeapon(
+          name: name,
+          damage_dealt: damage_dealt,
+          max_damage_per_round: max_damage_per_round,
+          type_details: AntiShipWeaponContinuousDetails(
+            shot_duration: shot_duration,
+            battle_short_shots: battle_short_shots,
+          ),
+          rounds_fired: rounds_fired,
+          hits: hits,
+        )),
+      )
     }
     _, _, _, _, _, _, _ -> {
       Error("Missing anti ship continuous weapon data")
@@ -1070,7 +1120,7 @@ fn anti_ship_field_config() {
 
 fn anti_ship_weapon_decoder(
   parsed_fields: Dict(Option(Tag), ParsedValue(a)),
-) -> Result(AntiShipWeapon, String) {
+) -> Result(ParseTarget, String) {
   case
     dict.get(parsed_fields, Some(Tag(Name("", "Name"), []))),
     dict.get(parsed_fields, Some(Tag(Name("", "TotalDamageDone"), []))),
@@ -1086,14 +1136,16 @@ fn anti_ship_weapon_decoder(
       Ok(ParsedValueInt(rounds_fired)),
       Ok(ParsedValueInt(hits))
     -> {
-      Ok(AntiShipWeapon(
-        name: name,
-        damage_dealt: damage_dealt,
-        max_damage_per_round: max_damage_per_round,
-        type_details: AntiShipWeaponGunDetails(rounds_carried: rounds_carried),
-        rounds_fired: rounds_fired,
-        hits: hits,
-      ))
+      Ok(
+        WeaponTarget(AntiShipWeapon(
+          name: name,
+          damage_dealt: damage_dealt,
+          max_damage_per_round: max_damage_per_round,
+          type_details: AntiShipWeaponGunDetails(rounds_carried: rounds_carried),
+          rounds_fired: rounds_fired,
+          hits: hits,
+        )),
+      )
     }
     _, _, _, _, _, _ -> {
       Error("Missing anti ship weapon data")
@@ -1102,7 +1154,7 @@ fn anti_ship_weapon_decoder(
 }
 
 fn parse_anti_ship_weapon(input) {
-  let parse_result = parse_map(anti_ship_field_config(), input)
+  let parse_result = parse_map(anti_ship_field_config(), input, False)
   case parse_result {
     Ok(#(parsed_fields, next_input)) -> {
       use weapon <- try(anti_ship_weapon_decoder(parsed_fields))
@@ -1138,7 +1190,7 @@ fn parse_strike_inner(
 }
 
 fn parse_missiles(input) {
-  let parse_result = parse_map(parse_missiles_field_config(), input)
+  let parse_result = parse_map(parse_missiles_field_config(), input, False)
   case parse_result {
     Ok(#(parsed_missiles, next_input)) -> {
       case

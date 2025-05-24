@@ -1,6 +1,7 @@
 import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import xmlm.{type Input, type Tag, ElementEnd, ElementStart, Tag}
@@ -37,8 +38,9 @@ pub type ParsedValue(contained) {
 pub fn parse_map(
   field_config: Dict(Option(Tag), ParseValue(contained)),
   input: Input,
+  is_root: Bool,
 ) -> Result(#(Dict(Option(Tag), ParsedValue(contained)), Input), String) {
-  parse_map_inner(field_config, dict.new(), input, True)
+  parse_map_inner(field_config, dict.new(), input, is_root)
 }
 
 pub fn parse_map_inner(
@@ -52,13 +54,19 @@ pub fn parse_map_inner(
     Ok(#(ElementStart(Tag(_, _) as tag), next_input)) -> {
       case dict.get(field_config, Some(tag)) {
         Ok(ParseValueSubElement(sub_field_config, ParsedValueDecoder(decoder))) -> {
+          echo #(
+            "Parsing sub element: " <> tag.name.local <> " with config: ",
+            sub_field_config,
+          )
           use #(sub_parsed_fields, next_input_2) <- try(parse_map_inner(
             sub_field_config,
             dict.new(),
             next_input,
             False,
           ))
+          echo #("Got sub fields: ", sub_parsed_fields)
           use new_decoded_value <- try(decoder(tag, sub_parsed_fields))
+          echo #("Decoded value: ", new_decoded_value)
           let next_parsed_fields =
             dict.insert(
               parsed_fields,
@@ -67,9 +75,11 @@ pub fn parse_map_inner(
             )
           case is_root {
             True -> {
+              echo "Root element parsed, returning"
               Ok(#(next_parsed_fields, next_input_2))
             }
             False -> {
+              echo "Continuing parsing after sub element"
               parse_map_inner(
                 field_config,
                 next_parsed_fields,
@@ -110,72 +120,51 @@ pub fn parse_map_inner(
           ))
           let next_parsed_fields =
             dict.insert(parsed_fields, Some(tag), ParsedValueString(value))
-          case is_root {
-            True -> {
-              Ok(#(next_parsed_fields, next_input_2))
-            }
-            False -> {
-              parse_map_inner(
-                field_config,
-                next_parsed_fields,
-                next_input_2,
-                False,
-              )
-            }
-          }
+          parse_map_inner(
+            field_config,
+            next_parsed_fields,
+            next_input_2,
+            is_root,
+          )
         }
         Ok(ParseValueInt) -> {
           use #(value, next_input_2) <- try(parse_int_element(next_input))
           let next_parsed_fields =
             dict.insert(parsed_fields, Some(tag), ParsedValueInt(value))
-          case is_root {
-            True -> {
-              Ok(#(next_parsed_fields, next_input_2))
-            }
-            False -> {
-              parse_map_inner(
-                field_config,
-                next_parsed_fields,
-                next_input_2,
-                False,
-              )
-            }
-          }
+          parse_map_inner(
+            field_config,
+            next_parsed_fields,
+            next_input_2,
+            is_root,
+          )
         }
         Ok(ParseValueFloat) -> {
           use #(value, next_input_2) <- try(parse_float_element(next_input))
           let next_parsed_fields =
             dict.insert(parsed_fields, Some(tag), ParsedValueFloat(value))
-          case is_root {
-            True -> {
-              Ok(#(next_parsed_fields, next_input_2))
-            }
-            False -> {
-              parse_map_inner(
-                field_config,
-                next_parsed_fields,
-                next_input_2,
-                False,
-              )
-            }
-          }
+          parse_map_inner(
+            field_config,
+            next_parsed_fields,
+            next_input_2,
+            is_root,
+          )
         }
         Error(Nil) -> {
           echo #("Skipping", tag)
-          case is_root {
-            True -> {
-              Ok(#(parsed_fields, next_input))
-            }
-            False -> {
-              use next_input <- try(skip_tag(next_input))
-              parse_map_inner(field_config, parsed_fields, next_input, False)
-            }
-          }
+          use next_input <- try(skip_tag(next_input))
+          parse_map_inner(field_config, parsed_fields, next_input, False)
         }
       }
     }
     Ok(#(ElementEnd, next_input)) -> {
-      Ok(#(parsed_fields, next_input))
+      let final_parsed_fields =
+        dict.map_values(parsed_fields, fn(_key, value) {
+          case value {
+            ParsedValueList(values) -> ParsedValueList(list.reverse(values))
+            _ -> value
+          }
+        })
+      Ok(#(final_parsed_fields, next_input))
     }
     Ok(#(xmlm.Data(data), next_input)) -> {
       let next_parsed_fields =

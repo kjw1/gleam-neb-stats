@@ -1521,6 +1521,34 @@ function reverse_and_prepend(loop$prefix, loop$suffix) {
 function reverse(list4) {
   return reverse_and_prepend(list4, toList([]));
 }
+function filter_map_loop(loop$list, loop$fun, loop$acc) {
+  while (true) {
+    let list4 = loop$list;
+    let fun = loop$fun;
+    let acc = loop$acc;
+    if (list4.hasLength(0)) {
+      return reverse(acc);
+    } else {
+      let first$1 = list4.head;
+      let rest$1 = list4.tail;
+      let _block;
+      let $ = fun(first$1);
+      if ($.isOk()) {
+        let first$2 = $[0];
+        _block = prepend(first$2, acc);
+      } else {
+        _block = acc;
+      }
+      let new_acc = _block;
+      loop$list = rest$1;
+      loop$fun = fun;
+      loop$acc = new_acc;
+    }
+  }
+}
+function filter_map(list4, fun) {
+  return filter_map_loop(list4, fun, toList([]));
+}
 function map_loop(loop$list, loop$fun, loop$acc) {
   while (true) {
     let list4 = loop$list;
@@ -2238,6 +2266,9 @@ function utf_codepoint_to_int(utf_codepoint) {
 function new_map() {
   return Dict.new();
 }
+function map_to_list(map6) {
+  return List.fromArray(map6.entries());
+}
 function map_remove(key, map6) {
   return map6.delete(key);
 }
@@ -2465,6 +2496,35 @@ function upsert(dict2, key, fun) {
   } else {
     return insert(dict2, key, fun(new None()));
   }
+}
+function fold_loop(loop$list, loop$initial, loop$fun) {
+  while (true) {
+    let list4 = loop$list;
+    let initial = loop$initial;
+    let fun = loop$fun;
+    if (list4.hasLength(0)) {
+      return initial;
+    } else {
+      let k = list4.head[0];
+      let v = list4.head[1];
+      let rest = list4.tail;
+      loop$list = rest;
+      loop$initial = fun(initial, k, v);
+      loop$fun = fun;
+    }
+  }
+}
+function fold2(dict2, initial, fun) {
+  return fold_loop(map_to_list(dict2), initial, fun);
+}
+function do_map_values(f, dict2) {
+  let f$1 = (dict3, k, v) => {
+    return insert(dict3, k, f(k, v));
+  };
+  return fold2(dict2, new_map(), f$1);
+}
+function map_values(dict2, fun) {
+  return do_map_values(fun, dict2);
 }
 
 // build/dev/javascript/gleam_javascript/gleam_javascript_ffi.mjs
@@ -10066,72 +10126,7 @@ function signal(input2) {
   }
 }
 
-// build/dev/javascript/neb_stats/parse.mjs
-var ParseReportState = class extends CustomType {
-  constructor(winning_team, team_a, team_b) {
-    super();
-    this.winning_team = winning_team;
-    this.team_a = team_a;
-    this.team_b = team_b;
-  }
-};
-var ParseTeamsState = class extends CustomType {
-  constructor(maybe_team_a, maybe_team_b) {
-    super();
-    this.maybe_team_a = maybe_team_a;
-    this.maybe_team_b = maybe_team_b;
-  }
-};
-var ParseTeamState = class extends CustomType {
-  constructor(which_team, players) {
-    super();
-    this.which_team = which_team;
-    this.players = players;
-  }
-};
-var ParsePlayerState = class extends CustomType {
-  constructor(name, ships, craft) {
-    super();
-    this.name = name;
-    this.ships = ships;
-    this.craft = craft;
-  }
-};
-var ParseCraftState = class extends CustomType {
-  constructor(name, class$2, carried, lost, sorties, anti_ship_weapons) {
-    super();
-    this.name = name;
-    this.class = class$2;
-    this.carried = carried;
-    this.lost = lost;
-    this.sorties = sorties;
-    this.anti_ship_weapons = anti_ship_weapons;
-  }
-};
-var ParseAntiShipCraftMissileState = class extends CustomType {
-  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hit, miss, soft_killed, hard_killed, sortied) {
-    super();
-    this.name = name;
-    this.damage_dealt = damage_dealt;
-    this.max_damage_per_round = max_damage_per_round;
-    this.rounds_fired = rounds_fired;
-    this.hit = hit;
-    this.miss = miss;
-    this.soft_killed = soft_killed;
-    this.hard_killed = hard_killed;
-    this.sortied = sortied;
-  }
-};
-var ParseShipState = class extends CustomType {
-  constructor(name, class$2, damage_taken, anti_ship_weapons, anti_ship_missiles) {
-    super();
-    this.name = name;
-    this.class = class$2;
-    this.damage_taken = damage_taken;
-    this.anti_ship_weapons = anti_ship_weapons;
-    this.anti_ship_missiles = anti_ship_missiles;
-  }
-};
+// build/dev/javascript/neb_stats/parse_helpers.mjs
 var ParsedValueDecoder = class extends CustomType {
   constructor(x0) {
     super();
@@ -10188,43 +10183,35 @@ var ParsedValueSubElement = class extends CustomType {
     this[0] = x0;
   }
 };
-function parse_team_id(loop$maybe_id, loop$input) {
+function skip_tag_inner(loop$input, loop$depth) {
   while (true) {
-    let maybe_id = loop$maybe_id;
     let input2 = loop$input;
+    let depth = loop$depth;
     let $ = signal(input2);
     if (!$.isOk()) {
       let e = $[0];
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      return new Error2("unexpected nested element for team id");
+      let next_input = $[0][1];
+      loop$input = next_input;
+      loop$depth = depth + 1;
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      if (maybe_id instanceof Some) {
-        let which_team = maybe_id[0];
-        return new Ok([which_team, next_input]);
+      if (depth === 0) {
+        return new Ok(next_input);
       } else {
-        return new Error2("Missing team id");
+        loop$input = next_input;
+        loop$depth = depth - 1;
       }
-    } else if ($.isOk() && $[0][0] instanceof Data && $[0][0][0] === "TeamA") {
-      let next_input = $[0][1];
-      loop$maybe_id = new Some(new TeamA());
-      loop$input = next_input;
-    } else if ($.isOk() && $[0][0] instanceof Data && $[0][0][0] === "TeamB") {
-      let next_input = $[0][1];
-      loop$maybe_id = new Some(new TeamB());
-      loop$input = next_input;
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      return new Error2(
-        concat2(toList(["Unexpected data at team_id: ", data]))
-      );
     } else {
       let next_input = $[0][1];
-      loop$maybe_id = maybe_id;
       loop$input = next_input;
+      loop$depth = depth;
     }
   }
+}
+function skip_tag(input2) {
+  return skip_tag_inner(input2, 0);
 }
 function parse_string_element(loop$maybe_name, loop$input) {
   while (true) {
@@ -10299,423 +10286,470 @@ function parse_float_element(input2) {
     return new Error2(e);
   }
 }
-function get_parsed_continuous_weapons(parsed_fields) {
-  let $ = map_get(
-    parsed_fields,
-    new Some(
-      new Tag(
-        new Name("", "WeaponReport"),
-        toList([
-          new Attribute2(
-            new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
-            "ContinuousWeaponReport"
-          )
-        ])
-      )
-    )
-  );
-  if ($.isOk() && $[0] instanceof ParsedValueList) {
-    let weapons = $[0][0];
-    return new Ok(weapons);
-  } else {
-    echo(parsed_fields, "src/parse.gleam", 939);
-    return new Error2("Missing continuous weapons");
-  }
-}
-function get_parsed_discrete_weapons(parsed_fields) {
-  let $ = map_get(
-    parsed_fields,
-    new Some(
-      new Tag(
-        new Name("", "WeaponReport"),
-        toList([
-          new Attribute2(
-            new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
-            "DiscreteWeaponReport"
-          )
-        ])
-      )
-    )
-  );
-  if ($.isOk() && $[0] instanceof ParsedValueList) {
-    let weapons = $[0][0];
-    return new Ok(weapons);
-  } else {
-    echo(parsed_fields, "src/parse.gleam", 966);
-    return new Error2("Missing discrete weapons");
-  }
-}
-function anti_ship_continuous_field_config() {
-  return from_list(
-    toList([
-      [
-        new Some(new Tag(new Name("", "Name"), toList([]))),
-        new ParseValueString()
-      ],
-      [
-        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
-        new ParseValueFloat()
-      ],
-      [
-        new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "ShotsFired"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "HitCount"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "ShotDuration"), toList([]))),
-        new ParseValueFloat()
-      ],
-      [
-        new Some(new Tag(new Name("", "ShotsFiredOverTimeLimit"), toList([]))),
-        new ParseValueInt()
-      ]
-    ])
-  );
-}
-function anti_ship_continuous_weapon_decoder(parsed_fields) {
-  let $ = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "Name"), toList([])))
-  );
-  let $1 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
-  );
-  let $2 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([])))
-  );
-  let $3 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "ShotsFired"), toList([])))
-  );
-  let $4 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "HitCount"), toList([])))
-  );
-  let $5 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "ShotDuration"), toList([])))
-  );
-  let $6 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "ShotsFiredOverTimeLimit"), toList([])))
-  );
-  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueFloat && $6.isOk() && $6[0] instanceof ParsedValueInt) {
-    let name = $[0][0];
-    let damage_dealt = $1[0][0];
-    let max_damage_per_round = $2[0][0];
-    let rounds_fired = $3[0][0];
-    let hits = $4[0][0];
-    let shot_duration = $5[0][0];
-    let battle_short_shots = $6[0][0];
-    return new Ok(
-      new AntiShipWeapon(
-        name,
-        max_damage_per_round,
-        rounds_fired,
-        hits,
-        damage_dealt,
-        new AntiShipWeaponContinuousDetails(shot_duration, battle_short_shots)
-      )
-    );
-  } else {
-    return new Error2("Missing anti ship continuous weapon data");
-  }
-}
-function anti_ship_weapon_continuous_child_decoder(tag, parsed_fields) {
-  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "WeaponReport" && tag.attributes.hasLength(1) && tag.attributes.head instanceof Attribute2 && tag.attributes.head.name instanceof Name && tag.attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && tag.attributes.head.name.local === "type" && tag.attributes.head.value === "ContinuousWeaponReport") {
-    return try$(
-      anti_ship_continuous_weapon_decoder(parsed_fields),
-      (weapon) => {
-        return new Ok(weapon);
-      }
-    );
-  } else {
-    return new Error2("Unexpected tag for anti ship weapon");
-  }
-}
-function anti_ship_field_config() {
-  return from_list(
-    toList([
-      [
-        new Some(new Tag(new Name("", "Name"), toList([]))),
-        new ParseValueString()
-      ],
-      [
-        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
-        new ParseValueFloat()
-      ],
-      [
-        new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "RoundsCarried"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "ShotsFired"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "HitCount"), toList([]))),
-        new ParseValueInt()
-      ]
-    ])
-  );
-}
-function anti_ship_weapon_decoder(parsed_fields) {
-  let $ = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "Name"), toList([])))
-  );
-  let $1 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
-  );
-  let $2 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([])))
-  );
-  let $3 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "RoundsCarried"), toList([])))
-  );
-  let $4 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "ShotsFired"), toList([])))
-  );
-  let $5 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "HitCount"), toList([])))
-  );
-  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt) {
-    let name = $[0][0];
-    let damage_dealt = $1[0][0];
-    let max_damage_per_round = $2[0][0];
-    let rounds_carried = $3[0][0];
-    let rounds_fired = $4[0][0];
-    let hits = $5[0][0];
-    return new Ok(
-      new AntiShipWeapon(
-        name,
-        max_damage_per_round,
-        rounds_fired,
-        hits,
-        damage_dealt,
-        new AntiShipWeaponGunDetails(rounds_carried)
-      )
-    );
-  } else {
-    return new Error2("Missing anti ship weapon data");
-  }
-}
-function anti_ship_weapon_child_decoder(tag, parsed_fields) {
-  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "WeaponReport" && tag.attributes.hasLength(1) && tag.attributes.head instanceof Attribute2 && tag.attributes.head.name instanceof Name && tag.attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && tag.attributes.head.name.local === "type" && tag.attributes.head.value === "DiscreteWeaponReport") {
-    return try$(
-      anti_ship_weapon_decoder(parsed_fields),
-      (weapon) => {
-        return new Ok(weapon);
-      }
-    );
-  } else {
-    return new Error2("Unexpected tag for anti ship weapon");
-  }
-}
-function anti_ship_weapons_field_config() {
-  return from_list(
-    toList([
-      [
-        new Some(
-          new Tag(
-            new Name("", "WeaponReport"),
-            toList([
-              new Attribute2(
-                new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
-                "DiscreteWeaponReport"
-              )
-            ])
-          )
-        ),
-        new ParseValueList(
-          anti_ship_field_config(),
-          new ParsedValueDecoder(anti_ship_weapon_child_decoder)
-        )
-      ],
-      [
-        new Some(
-          new Tag(
-            new Name("", "WeaponReport"),
-            toList([
-              new Attribute2(
-                new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
-                "ContinuousWeaponReport"
-              )
-            ])
-          )
-        ),
-        new ParseValueList(
-          anti_ship_continuous_field_config(),
-          new ParsedValueDecoder(anti_ship_weapon_continuous_child_decoder)
-        )
-      ]
-    ])
-  );
-}
-function parse_missile_field_config() {
-  return from_list(
-    toList([
-      [
-        new Some(new Tag(new Name("", "MissileName"), toList([]))),
-        new ParseValueString()
-      ],
-      [
-        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
-        new ParseValueFloat()
-      ],
-      [
-        new Some(new Tag(new Name("", "TotalCarried"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "TotalExpended"), toList([]))),
-        new ParseValueInt()
-      ],
-      [new Some(new Tag(new Name("", "Hits"), toList([]))), new ParseValueInt()],
-      [
-        new Some(new Tag(new Name("", "Misses"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "Softkills"), toList([]))),
-        new ParseValueInt()
-      ],
-      [
-        new Some(new Tag(new Name("", "Hardkills"), toList([]))),
-        new ParseValueInt()
-      ]
-    ])
-  );
-}
-function missile_decoder(parsed_fields) {
-  let $ = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "MissileName"), toList([])))
-  );
-  let $1 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
-  );
-  let $2 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "TotalCarried"), toList([])))
-  );
-  let $3 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "TotalExpended"), toList([])))
-  );
-  let $4 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "Hits"), toList([])))
-  );
-  let $5 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "Misses"), toList([])))
-  );
-  let $6 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "Softkills"), toList([])))
-  );
-  let $7 = map_get(
-    parsed_fields,
-    new Some(new Tag(new Name("", "Hardkills"), toList([])))
-  );
-  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt && $6.isOk() && $6[0] instanceof ParsedValueInt && $7.isOk() && $7[0] instanceof ParsedValueInt) {
-    let name = $[0][0];
-    let damage_dealt = $1[0][0];
-    let carried = $2[0][0];
-    let expended = $3[0][0];
-    let hit = $4[0][0];
-    let miss = $5[0][0];
-    let soft_killed = $6[0][0];
-    let hard_killed = $7[0][0];
-    return new Ok(
-      new Missile(
-        name,
-        damage_dealt,
-        carried,
-        expended,
-        hit,
-        miss,
-        soft_killed,
-        hard_killed
-      )
-    );
-  } else {
-    return new Error2("Missing missile data");
-  }
-}
-function missiles_child_decoder(tag, parsed_fields) {
-  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "OffensiveMissileReport" && tag.attributes.hasLength(0)) {
-    return missile_decoder(parsed_fields);
-  } else {
-    let namespace = tag.name.uri;
-    let item_name = tag.name.local;
-    return new Error2(
-      "Unknown missile child element " + namespace + ":" + item_name
-    );
-  }
-}
-function parse_missiles_field_config() {
-  return from_list(
-    toList([
-      [
-        new Some(new Tag(new Name("", "OffensiveMissileReport"), toList([]))),
-        new ParseValueList(
-          parse_missile_field_config(),
-          new ParsedValueDecoder(missiles_child_decoder)
-        )
-      ]
-    ])
-  );
-}
-function skip_tag_inner(loop$input, loop$depth) {
+function parse_map_inner(loop$field_config, loop$parsed_fields, loop$input, loop$is_root) {
   while (true) {
+    let field_config = loop$field_config;
+    let parsed_fields = loop$parsed_fields;
     let input2 = loop$input;
-    let depth = loop$depth;
+    let is_root = loop$is_root;
     let $ = signal(input2);
     if (!$.isOk()) {
       let e = $[0];
       return new Error2(input_error_to_string(e));
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let tag = $[0][0][0];
       let next_input = $[0][1];
-      loop$input = next_input;
-      loop$depth = depth + 1;
+      let $1 = map_get(field_config, new Some(tag));
+      if ($1.isOk() && $1[0] instanceof ParseValueSubElement && $1[0][1] instanceof ParsedValueDecoder) {
+        let sub_field_config = $1[0][0];
+        let decoder = $1[0][1][0];
+        echo(
+          [
+            "Parsing sub element: " + tag.name.local + " with config: ",
+            sub_field_config
+          ],
+          "src/parse_helpers.gleam",
+          57
+        );
+        return try$(
+          parse_map_inner(sub_field_config, new_map(), next_input, false),
+          (_use0) => {
+            let sub_parsed_fields = _use0[0];
+            let next_input_2 = _use0[1];
+            echo(
+              ["Got sub fields: ", sub_parsed_fields],
+              "src/parse_helpers.gleam",
+              67
+            );
+            return try$(
+              decoder(tag, sub_parsed_fields),
+              (new_decoded_value) => {
+                echo(
+                  ["Decoded value: ", new_decoded_value],
+                  "src/parse_helpers.gleam",
+                  69
+                );
+                let next_parsed_fields = insert(
+                  parsed_fields,
+                  new Some(tag),
+                  new ParsedValueSubElement(new_decoded_value)
+                );
+                if (is_root) {
+                  echo(
+                    "Root element parsed, returning",
+                    "src/parse_helpers.gleam",
+                    78
+                  );
+                  return new Ok([next_parsed_fields, next_input_2]);
+                } else {
+                  echo(
+                    "Continuing parsing after sub element",
+                    "src/parse_helpers.gleam",
+                    82
+                  );
+                  return parse_map_inner(
+                    field_config,
+                    next_parsed_fields,
+                    next_input_2,
+                    false
+                  );
+                }
+              }
+            );
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueList && $1[0][1] instanceof ParsedValueDecoder) {
+        let sub_field_config = $1[0][0];
+        let decoder = $1[0][1][0];
+        return try$(
+          parse_map_inner(sub_field_config, new_map(), next_input, false),
+          (_use0) => {
+            let sub_parsed_fields = _use0[0];
+            let next_input_2 = _use0[1];
+            return try$(
+              decoder(tag, sub_parsed_fields),
+              (new_decoded_value) => {
+                let next_parsed_fields = upsert(
+                  parsed_fields,
+                  new Some(tag),
+                  (maybe_existing_value) => {
+                    if (maybe_existing_value instanceof Some && maybe_existing_value[0] instanceof ParsedValueList) {
+                      let existing_parsed_fields = maybe_existing_value[0][0];
+                      return new ParsedValueList(
+                        prepend(new_decoded_value, existing_parsed_fields)
+                      );
+                    } else if (maybe_existing_value instanceof Some) {
+                      return new ParsedValueList(toList([new_decoded_value]));
+                    } else {
+                      return new ParsedValueList(toList([new_decoded_value]));
+                    }
+                  }
+                );
+                return parse_map_inner(
+                  field_config,
+                  next_parsed_fields,
+                  next_input_2,
+                  is_root
+                );
+              }
+            );
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueString) {
+        return try$(
+          parse_string_element(new None(), next_input),
+          (_use0) => {
+            let value = _use0[0];
+            let next_input_2 = _use0[1];
+            let next_parsed_fields = insert(
+              parsed_fields,
+              new Some(tag),
+              new ParsedValueString(value)
+            );
+            return parse_map_inner(
+              field_config,
+              next_parsed_fields,
+              next_input_2,
+              is_root
+            );
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueInt) {
+        return try$(
+          parse_int_element(next_input),
+          (_use0) => {
+            let value = _use0[0];
+            let next_input_2 = _use0[1];
+            let next_parsed_fields = insert(
+              parsed_fields,
+              new Some(tag),
+              new ParsedValueInt(value)
+            );
+            return parse_map_inner(
+              field_config,
+              next_parsed_fields,
+              next_input_2,
+              is_root
+            );
+          }
+        );
+      } else if ($1.isOk() && $1[0] instanceof ParseValueFloat) {
+        return try$(
+          parse_float_element(next_input),
+          (_use0) => {
+            let value = _use0[0];
+            let next_input_2 = _use0[1];
+            let next_parsed_fields = insert(
+              parsed_fields,
+              new Some(tag),
+              new ParsedValueFloat(value)
+            );
+            return parse_map_inner(
+              field_config,
+              next_parsed_fields,
+              next_input_2,
+              is_root
+            );
+          }
+        );
+      } else {
+        echo(["Skipping", tag], "src/parse_helpers.gleam", 153);
+        return try$(
+          skip_tag(next_input),
+          (next_input2) => {
+            return parse_map_inner(
+              field_config,
+              parsed_fields,
+              next_input2,
+              false
+            );
+          }
+        );
+      }
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      if (depth === 0) {
-        return new Ok(next_input);
-      } else {
-        loop$input = next_input;
-        loop$depth = depth - 1;
-      }
+      let final_parsed_fields = map_values(
+        parsed_fields,
+        (_, value) => {
+          if (value instanceof ParsedValueList) {
+            let values3 = value[0];
+            return new ParsedValueList(reverse(values3));
+          } else {
+            return value;
+          }
+        }
+      );
+      return new Ok([final_parsed_fields, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      let next_input = $[0][1];
+      let next_parsed_fields = insert(
+        parsed_fields,
+        new None(),
+        new ParsedValueString(data)
+      );
+      loop$field_config = field_config;
+      loop$parsed_fields = next_parsed_fields;
+      loop$input = next_input;
+      loop$is_root = is_root;
     } else {
       let next_input = $[0][1];
+      loop$field_config = field_config;
+      loop$parsed_fields = parsed_fields;
       loop$input = next_input;
-      loop$depth = depth;
+      loop$is_root = is_root;
     }
   }
 }
-function skip_tag(input2) {
-  return skip_tag_inner(input2, 0);
+function parse_map(field_config, input2, is_root) {
+  return parse_map_inner(field_config, new_map(), input2, is_root);
+}
+function echo(value, file, line) {
+  const grey = "\x1B[90m";
+  const reset_color = "\x1B[39m";
+  const file_line = `${file}:${line}`;
+  const string_value = echo$inspect(value);
+  if (globalThis.process?.stderr?.write) {
+    const string5 = `${grey}${file_line}${reset_color}
+${string_value}
+`;
+    process.stderr.write(string5);
+  } else if (globalThis.Deno) {
+    const string5 = `${grey}${file_line}${reset_color}
+${string_value}
+`;
+    globalThis.Deno.stderr.writeSync(new TextEncoder().encode(string5));
+  } else {
+    const string5 = `${file_line}
+${string_value}`;
+    globalThis.console.log(string5);
+  }
+  return value;
+}
+function echo$inspectString(str) {
+  let new_str = '"';
+  for (let i = 0; i < str.length; i++) {
+    let char = str[i];
+    if (char == "\n") new_str += "\\n";
+    else if (char == "\r") new_str += "\\r";
+    else if (char == "	") new_str += "\\t";
+    else if (char == "\f") new_str += "\\f";
+    else if (char == "\\") new_str += "\\\\";
+    else if (char == '"') new_str += '\\"';
+    else if (char < " " || char > "~" && char < "\xA0") {
+      new_str += "\\u{" + char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0") + "}";
+    } else {
+      new_str += char;
+    }
+  }
+  new_str += '"';
+  return new_str;
+}
+function echo$inspectDict(map6) {
+  let body = "dict.from_list([";
+  let first = true;
+  let key_value_pairs = [];
+  map6.forEach((value, key) => {
+    key_value_pairs.push([key, value]);
+  });
+  key_value_pairs.sort();
+  key_value_pairs.forEach(([key, value]) => {
+    if (!first) body = body + ", ";
+    body = body + "#(" + echo$inspect(key) + ", " + echo$inspect(value) + ")";
+    first = false;
+  });
+  return body + "])";
+}
+function echo$inspectCustomType(record) {
+  const props = globalThis.Object.keys(record).map((label) => {
+    const value = echo$inspect(record[label]);
+    return isNaN(parseInt(label)) ? `${label}: ${value}` : value;
+  }).join(", ");
+  return props ? `${record.constructor.name}(${props})` : record.constructor.name;
+}
+function echo$inspectObject(v) {
+  const name = Object.getPrototypeOf(v)?.constructor?.name || "Object";
+  const props = [];
+  for (const k of Object.keys(v)) {
+    props.push(`${echo$inspect(k)}: ${echo$inspect(v[k])}`);
+  }
+  const body = props.length ? " " + props.join(", ") + " " : "";
+  const head = name === "Object" ? "" : name + " ";
+  return `//js(${head}{${body}})`;
+}
+function echo$inspect(v) {
+  const t = typeof v;
+  if (v === true) return "True";
+  if (v === false) return "False";
+  if (v === null) return "//js(null)";
+  if (v === void 0) return "Nil";
+  if (t === "string") return echo$inspectString(v);
+  if (t === "bigint" || t === "number") return v.toString();
+  if (globalThis.Array.isArray(v))
+    return `#(${v.map(echo$inspect).join(", ")})`;
+  if (v instanceof List)
+    return `[${v.toArray().map(echo$inspect).join(", ")}]`;
+  if (v instanceof UtfCodepoint)
+    return `//utfcodepoint(${String.fromCodePoint(v.value)})`;
+  if (v instanceof BitArray) return echo$inspectBitArray(v);
+  if (v instanceof CustomType) return echo$inspectCustomType(v);
+  if (echo$isDict(v)) return echo$inspectDict(v);
+  if (v instanceof Set)
+    return `//js(Set(${[...v].map(echo$inspect).join(", ")}))`;
+  if (v instanceof RegExp) return `//js(${v})`;
+  if (v instanceof Date) return `//js(Date("${v.toISOString()}"))`;
+  if (v instanceof Function) {
+    const args = [];
+    for (const i of Array(v.length).keys())
+      args.push(String.fromCharCode(i + 97));
+    return `//fn(${args.join(", ")}) { ... }`;
+  }
+  return echo$inspectObject(v);
+}
+function echo$inspectBitArray(bitArray) {
+  let endOfAlignedBytes = bitArray.bitOffset + 8 * Math.trunc(bitArray.bitSize / 8);
+  let alignedBytes = bitArraySlice(
+    bitArray,
+    bitArray.bitOffset,
+    endOfAlignedBytes
+  );
+  let remainingUnalignedBits = bitArray.bitSize % 8;
+  if (remainingUnalignedBits > 0) {
+    let remainingBits = bitArraySliceToInt(
+      bitArray,
+      endOfAlignedBytes,
+      bitArray.bitSize,
+      false,
+      false
+    );
+    let alignedBytesArray = Array.from(alignedBytes.rawBuffer);
+    let suffix = `${remainingBits}:size(${remainingUnalignedBits})`;
+    if (alignedBytesArray.length === 0) {
+      return `<<${suffix}>>`;
+    } else {
+      return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}, ${suffix}>>`;
+    }
+  } else {
+    return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}>>`;
+  }
+}
+function echo$isDict(value) {
+  try {
+    return value instanceof Dict;
+  } catch {
+    return false;
+  }
+}
+
+// build/dev/javascript/neb_stats/parse.mjs
+var WeaponTarget = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
+var ParseReportState = class extends CustomType {
+  constructor(winning_team, team_a, team_b) {
+    super();
+    this.winning_team = winning_team;
+    this.team_a = team_a;
+    this.team_b = team_b;
+  }
+};
+var ParseTeamsState = class extends CustomType {
+  constructor(maybe_team_a, maybe_team_b) {
+    super();
+    this.maybe_team_a = maybe_team_a;
+    this.maybe_team_b = maybe_team_b;
+  }
+};
+var ParseTeamState = class extends CustomType {
+  constructor(which_team, players) {
+    super();
+    this.which_team = which_team;
+    this.players = players;
+  }
+};
+var ParsePlayerState = class extends CustomType {
+  constructor(name, ships, craft) {
+    super();
+    this.name = name;
+    this.ships = ships;
+    this.craft = craft;
+  }
+};
+var ParseCraftState = class extends CustomType {
+  constructor(name, class$2, carried, lost, sorties, anti_ship_weapons) {
+    super();
+    this.name = name;
+    this.class = class$2;
+    this.carried = carried;
+    this.lost = lost;
+    this.sorties = sorties;
+    this.anti_ship_weapons = anti_ship_weapons;
+  }
+};
+var ParseAntiShipCraftMissileState = class extends CustomType {
+  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hit, miss, soft_killed, hard_killed, sortied) {
+    super();
+    this.name = name;
+    this.damage_dealt = damage_dealt;
+    this.max_damage_per_round = max_damage_per_round;
+    this.rounds_fired = rounds_fired;
+    this.hit = hit;
+    this.miss = miss;
+    this.soft_killed = soft_killed;
+    this.hard_killed = hard_killed;
+    this.sortied = sortied;
+  }
+};
+var ParseShipState = class extends CustomType {
+  constructor(name, class$2, damage_taken, anti_ship_weapons, anti_ship_missiles) {
+    super();
+    this.name = name;
+    this.class = class$2;
+    this.damage_taken = damage_taken;
+    this.anti_ship_weapons = anti_ship_weapons;
+    this.anti_ship_missiles = anti_ship_missiles;
+  }
+};
+function parse_team_id(loop$maybe_id, loop$input) {
+  while (true) {
+    let maybe_id = loop$maybe_id;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      return new Error2("unexpected nested element for team id");
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (maybe_id instanceof Some) {
+        let which_team = maybe_id[0];
+        return new Ok([which_team, next_input]);
+      } else {
+        return new Error2("Missing team id");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data && $[0][0][0] === "TeamA") {
+      let next_input = $[0][1];
+      loop$maybe_id = new Some(new TeamA());
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof Data && $[0][0][0] === "TeamB") {
+      let next_input = $[0][1];
+      loop$maybe_id = new Some(new TeamB());
+      loop$input = next_input;
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at team_id: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$maybe_id = maybe_id;
+      loop$input = next_input;
+    }
+  }
 }
 function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
   while (true) {
@@ -10998,7 +11032,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
           ]
         );
       } else {
-        echo(parse_state, "src/parse.gleam", 742);
+        echo2(parse_state, "src/parse.gleam", 709);
         return new Error2("Missing anti-ship craft missile data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -11031,153 +11065,353 @@ function parse_anti_ship_craft_missile(input2) {
     input2
   );
 }
-function parse_map(loop$field_config, loop$parsed_fields, loop$input) {
-  while (true) {
-    let field_config = loop$field_config;
-    let parsed_fields = loop$parsed_fields;
-    let input2 = loop$input;
-    let $ = signal(input2);
-    if (!$.isOk()) {
-      let e = $[0];
-      return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let tag = $[0][0][0];
-      let next_input = $[0][1];
-      let $1 = map_get(field_config, new Some(tag));
-      if ($1.isOk() && $1[0] instanceof ParseValueSubElement && $1[0][1] instanceof ParsedValueDecoder) {
-        let sub_field_config = $1[0][0];
-        let decoder = $1[0][1][0];
-        return try$(
-          parse_map(sub_field_config, new_map(), next_input),
-          (_use0) => {
-            let sub_parsed_fields = _use0[0];
-            let next_input_2 = _use0[1];
-            return try$(
-              decoder(tag, sub_parsed_fields),
-              (new_decoded_value) => {
-                let next_parsed_fields = insert(
-                  parsed_fields,
-                  new Some(tag),
-                  new ParsedValueSubElement(new_decoded_value)
-                );
-                echo(next_parsed_fields, "src/parse.gleam", 1327);
-                return parse_map(field_config, next_parsed_fields, next_input_2);
-              }
-            );
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueList && $1[0][1] instanceof ParsedValueDecoder) {
-        let sub_field_config = $1[0][0];
-        let decoder = $1[0][1][0];
-        return try$(
-          parse_map(sub_field_config, new_map(), next_input),
-          (_use0) => {
-            let sub_parsed_fields = _use0[0];
-            let next_input_2 = _use0[1];
-            return try$(
-              decoder(tag, sub_parsed_fields),
-              (new_decoded_value) => {
-                let next_parsed_fields = upsert(
-                  parsed_fields,
-                  new Some(tag),
-                  (maybe_existing_value) => {
-                    if (maybe_existing_value instanceof Some && maybe_existing_value[0] instanceof ParsedValueList) {
-                      let existing_parsed_fields = maybe_existing_value[0][0];
-                      return new ParsedValueList(
-                        prepend(new_decoded_value, existing_parsed_fields)
-                      );
-                    } else if (maybe_existing_value instanceof Some) {
-                      return new ParsedValueList(toList([new_decoded_value]));
-                    } else {
-                      return new ParsedValueList(toList([new_decoded_value]));
-                    }
-                  }
-                );
-                echo(next_parsed_fields, "src/parse.gleam", 1346);
-                return parse_map(field_config, next_parsed_fields, next_input_2);
-              }
-            );
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueString) {
-        return try$(
-          parse_string_element(new None(), next_input),
-          (_use0) => {
-            let value = _use0[0];
-            let next_input_2 = _use0[1];
-            let next_parsed_fields = insert(
-              parsed_fields,
-              new Some(tag),
-              new ParsedValueString(value)
-            );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueInt) {
-        return try$(
-          parse_int_element(next_input),
-          (_use0) => {
-            let value = _use0[0];
-            let next_input_2 = _use0[1];
-            let next_parsed_fields = insert(
-              parsed_fields,
-              new Some(tag),
-              new ParsedValueInt(value)
-            );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
-          }
-        );
-      } else if ($1.isOk() && $1[0] instanceof ParseValueFloat) {
-        return try$(
-          parse_float_element(next_input),
-          (_use0) => {
-            let value = _use0[0];
-            let next_input_2 = _use0[1];
-            let next_parsed_fields = insert(
-              parsed_fields,
-              new Some(tag),
-              new ParsedValueFloat(value)
-            );
-            return parse_map(field_config, next_parsed_fields, next_input_2);
-          }
-        );
-      } else {
-        echo(["Skipping", tag], "src/parse.gleam", 1371);
-        return try$(
-          skip_tag(next_input),
-          (next_input2) => {
-            return parse_map(field_config, parsed_fields, next_input2);
-          }
-        );
-      }
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      return new Ok([parsed_fields, next_input]);
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      let next_input = $[0][1];
-      let next_parsed_fields = insert(
-        parsed_fields,
-        new None(),
-        new ParsedValueString(data)
-      );
-      loop$field_config = field_config;
-      loop$parsed_fields = next_parsed_fields;
-      loop$input = next_input;
+function anti_ship_weapons_child_decoder(tag, parsed_fields) {
+  echo2(tag, "src/parse.gleam", 881);
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "Weapons" && tag.attributes.hasLength(0)) {
+    let _block;
+    let _pipe = parsed_fields;
+    _block = map_get(
+      _pipe,
+      new Some(new Tag(new Name("", "Weapons"), toList([])))
+    );
+    let weapons_result = _block;
+    if (weapons_result.isOk() && weapons_result[0] instanceof ParsedValueSubElement) {
+      let weapons = weapons_result[0][0];
+      return new Ok(weapons);
     } else {
-      let next_input = $[0][1];
-      loop$field_config = field_config;
-      loop$parsed_fields = parsed_fields;
-      loop$input = next_input;
+      return new Error2("Missing weapons");
     }
+  } else {
+    return new Error2("Unexpected tag for anti ship weapons");
   }
 }
-function parse_anti_ship_weapons(input2) {
-  let parse_result = parse_map(
-    anti_ship_weapons_field_config(),
-    new_map(),
-    input2
+function get_parsed_continuous_weapons(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(
+      new Tag(
+        new Name("", "WeaponReport"),
+        toList([
+          new Attribute2(
+            new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+            "ContinuousWeaponReport"
+          )
+        ])
+      )
+    )
   );
+  if ($.isOk() && $[0] instanceof ParsedValueList) {
+    let weapon_targets = $[0][0];
+    let _block;
+    let _pipe = weapon_targets;
+    _block = filter_map(
+      _pipe,
+      (target) => {
+        if (target instanceof WeaponTarget) {
+          let weapon = target[0];
+          return new Ok(weapon);
+        } else {
+          return new Error2(void 0);
+        }
+      }
+    );
+    let weapons = _block;
+    return new Ok(weapons);
+  } else {
+    echo2(
+      ["Failed to parse continuous weapons", parsed_fields],
+      "src/parse.gleam",
+      930
+    );
+    return new Error2("Missing continuous weapons");
+  }
+}
+function get_parsed_discrete_weapons(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(
+      new Tag(
+        new Name("", "WeaponReport"),
+        toList([
+          new Attribute2(
+            new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+            "DiscreteWeaponReport"
+          )
+        ])
+      )
+    )
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueList) {
+    let weapon_targets = $[0][0];
+    let _block;
+    let _pipe = weapon_targets;
+    _block = filter_map(
+      _pipe,
+      (target) => {
+        if (target instanceof WeaponTarget) {
+          let weapon = target[0];
+          return new Ok(weapon);
+        } else {
+          return new Error2(void 0);
+        }
+      }
+    );
+    let weapons = _block;
+    return new Ok(weapons);
+  } else {
+    echo2(
+      ["Failed to parse discrete weapons", parsed_fields],
+      "src/parse.gleam",
+      968
+    );
+    return new Error2("Missing discrete weapons");
+  }
+}
+function anti_ship_continuous_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "Name"), toList([]))),
+        new ParseValueString()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotsFired"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "HitCount"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotDuration"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotsFiredOverTimeLimit"), toList([]))),
+        new ParseValueInt()
+      ]
+    ])
+  );
+}
+function anti_ship_continuous_weapon_decoder(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Name"), toList([])))
+  );
+  let $1 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
+  );
+  let $2 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([])))
+  );
+  let $3 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotsFired"), toList([])))
+  );
+  let $4 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "HitCount"), toList([])))
+  );
+  let $5 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotDuration"), toList([])))
+  );
+  let $6 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotsFiredOverTimeLimit"), toList([])))
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueFloat && $6.isOk() && $6[0] instanceof ParsedValueInt) {
+    let name = $[0][0];
+    let damage_dealt = $1[0][0];
+    let max_damage_per_round = $2[0][0];
+    let rounds_fired = $3[0][0];
+    let hits = $4[0][0];
+    let shot_duration = $5[0][0];
+    let battle_short_shots = $6[0][0];
+    return new Ok(
+      new WeaponTarget(
+        new AntiShipWeapon(
+          name,
+          max_damage_per_round,
+          rounds_fired,
+          hits,
+          damage_dealt,
+          new AntiShipWeaponContinuousDetails(shot_duration, battle_short_shots)
+        )
+      )
+    );
+  } else {
+    return new Error2("Missing anti ship continuous weapon data");
+  }
+}
+function anti_ship_weapon_continuous_child_decoder(tag, parsed_fields) {
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "WeaponReport" && tag.attributes.hasLength(1) && tag.attributes.head instanceof Attribute2 && tag.attributes.head.name instanceof Name && tag.attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && tag.attributes.head.name.local === "type" && tag.attributes.head.value === "ContinuousWeaponReport") {
+    return try$(
+      anti_ship_continuous_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok(weapon);
+      }
+    );
+  } else {
+    return new Error2("Unexpected tag for anti ship weapon");
+  }
+}
+function anti_ship_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "Name"), toList([]))),
+        new ParseValueString()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "RoundsCarried"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "ShotsFired"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "HitCount"), toList([]))),
+        new ParseValueInt()
+      ]
+    ])
+  );
+}
+function anti_ship_weapon_decoder(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Name"), toList([])))
+  );
+  let $1 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
+  );
+  let $2 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "MaxDamagePerShot"), toList([])))
+  );
+  let $3 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "RoundsCarried"), toList([])))
+  );
+  let $4 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "ShotsFired"), toList([])))
+  );
+  let $5 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "HitCount"), toList([])))
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt) {
+    let name = $[0][0];
+    let damage_dealt = $1[0][0];
+    let max_damage_per_round = $2[0][0];
+    let rounds_carried = $3[0][0];
+    let rounds_fired = $4[0][0];
+    let hits = $5[0][0];
+    return new Ok(
+      new WeaponTarget(
+        new AntiShipWeapon(
+          name,
+          max_damage_per_round,
+          rounds_fired,
+          hits,
+          damage_dealt,
+          new AntiShipWeaponGunDetails(rounds_carried)
+        )
+      )
+    );
+  } else {
+    return new Error2("Missing anti ship weapon data");
+  }
+}
+function anti_ship_weapon_child_decoder(tag, parsed_fields) {
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "WeaponReport" && tag.attributes.hasLength(1) && tag.attributes.head instanceof Attribute2 && tag.attributes.head.name instanceof Name && tag.attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && tag.attributes.head.name.local === "type" && tag.attributes.head.value === "DiscreteWeaponReport") {
+    return try$(
+      anti_ship_weapon_decoder(parsed_fields),
+      (weapon) => {
+        return new Ok(weapon);
+      }
+    );
+  } else {
+    return new Error2("Unexpected tag for anti ship weapon");
+  }
+}
+function anti_ship_weapons_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(
+          new Tag(
+            new Name("", "WeaponReport"),
+            toList([
+              new Attribute2(
+                new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+                "DiscreteWeaponReport"
+              )
+            ])
+          )
+        ),
+        new ParseValueList(
+          anti_ship_field_config(),
+          new ParsedValueDecoder(anti_ship_weapon_child_decoder)
+        )
+      ],
+      [
+        new Some(
+          new Tag(
+            new Name("", "WeaponReport"),
+            toList([
+              new Attribute2(
+                new Name("http://www.w3.org/2001/XMLSchema-instance", "type"),
+                "ContinuousWeaponReport"
+              )
+            ])
+          )
+        ),
+        new ParseValueList(
+          anti_ship_continuous_field_config(),
+          new ParsedValueDecoder(anti_ship_weapon_continuous_child_decoder)
+        )
+      ]
+    ])
+  );
+}
+function anti_ship_element_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "Weapons"), toList([]))),
+        new ParseValueSubElement(
+          anti_ship_weapons_field_config(),
+          new ParsedValueDecoder(anti_ship_weapons_child_decoder)
+        )
+      ]
+    ])
+  );
+}
+function parse_anti_ship_element(input2) {
+  let parse_result = parse_map(anti_ship_element_field_config(), input2, false);
+  echo2(parse_result, "src/parse.gleam", 862);
   if (parse_result.isOk()) {
     let parsed_fields = parse_result[0][0];
     let next_input = parse_result[0][1];
@@ -11197,52 +11431,8 @@ function parse_anti_ship_weapons(input2) {
     return new Error2(e);
   }
 }
-function parse_anti_ship_inner(loop$anti_ship, loop$input) {
-  while (true) {
-    let anti_ship = loop$anti_ship;
-    let input2 = loop$input;
-    let $ = signal(input2);
-    if (!$.isOk()) {
-      let e = $[0];
-      return new Error2(input_error_to_string(e));
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "Weapons") {
-      let next_input = $[0][1];
-      return try$(
-        parse_anti_ship_weapons(next_input),
-        (_use0) => {
-          let weapons = _use0[0];
-          let next_input_2 = _use0[1];
-          return parse_anti_ship_inner(weapons, next_input_2);
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
-      let next_input = $[0][1];
-      return try$(
-        skip_tag(next_input),
-        (next_input_2) => {
-          return parse_anti_ship_inner(anti_ship, next_input_2);
-        }
-      );
-    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
-      let next_input = $[0][1];
-      return new Ok([anti_ship, next_input]);
-    } else if ($.isOk() && $[0][0] instanceof Data) {
-      let data = $[0][0][0];
-      return new Error2(
-        concat2(toList(["Unexpected data at anti ship: ", data]))
-      );
-    } else {
-      let next_input = $[0][1];
-      loop$anti_ship = anti_ship;
-      loop$input = next_input;
-    }
-  }
-}
-function parse_anti_ship(input2) {
-  return parse_anti_ship_inner(toList([]), input2);
-}
 function parse_anti_ship_weapon(input2) {
-  let parse_result = parse_map(anti_ship_field_config(), new_map(), input2);
+  let parse_result = parse_map(anti_ship_field_config(), input2, false);
   if (parse_result.isOk()) {
     let parsed_fields = parse_result[0][0];
     let next_input = parse_result[0][1];
@@ -11257,12 +11447,125 @@ function parse_anti_ship_weapon(input2) {
     return new Error2(e);
   }
 }
-function parse_missiles(input2) {
-  let parse_result = parse_map(
-    parse_missiles_field_config(),
-    new_map(),
-    input2
+function parse_missile_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "MissileName"), toList([]))),
+        new ParseValueString()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalDamageDone"), toList([]))),
+        new ParseValueFloat()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalCarried"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "TotalExpended"), toList([]))),
+        new ParseValueInt()
+      ],
+      [new Some(new Tag(new Name("", "Hits"), toList([]))), new ParseValueInt()],
+      [
+        new Some(new Tag(new Name("", "Misses"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "Softkills"), toList([]))),
+        new ParseValueInt()
+      ],
+      [
+        new Some(new Tag(new Name("", "Hardkills"), toList([]))),
+        new ParseValueInt()
+      ]
+    ])
   );
+}
+function missile_decoder(parsed_fields) {
+  let $ = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "MissileName"), toList([])))
+  );
+  let $1 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalDamageDone"), toList([])))
+  );
+  let $2 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalCarried"), toList([])))
+  );
+  let $3 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "TotalExpended"), toList([])))
+  );
+  let $4 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Hits"), toList([])))
+  );
+  let $5 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Misses"), toList([])))
+  );
+  let $6 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Softkills"), toList([])))
+  );
+  let $7 = map_get(
+    parsed_fields,
+    new Some(new Tag(new Name("", "Hardkills"), toList([])))
+  );
+  if ($.isOk() && $[0] instanceof ParsedValueString && $1.isOk() && $1[0] instanceof ParsedValueFloat && $2.isOk() && $2[0] instanceof ParsedValueInt && $3.isOk() && $3[0] instanceof ParsedValueInt && $4.isOk() && $4[0] instanceof ParsedValueInt && $5.isOk() && $5[0] instanceof ParsedValueInt && $6.isOk() && $6[0] instanceof ParsedValueInt && $7.isOk() && $7[0] instanceof ParsedValueInt) {
+    let name = $[0][0];
+    let damage_dealt = $1[0][0];
+    let carried = $2[0][0];
+    let expended = $3[0][0];
+    let hit = $4[0][0];
+    let miss = $5[0][0];
+    let soft_killed = $6[0][0];
+    let hard_killed = $7[0][0];
+    return new Ok(
+      new Missile(
+        name,
+        damage_dealt,
+        carried,
+        expended,
+        hit,
+        miss,
+        soft_killed,
+        hard_killed
+      )
+    );
+  } else {
+    return new Error2("Missing missile data");
+  }
+}
+function missiles_child_decoder(tag, parsed_fields) {
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "OffensiveMissileReport" && tag.attributes.hasLength(0)) {
+    return missile_decoder(parsed_fields);
+  } else {
+    let namespace = tag.name.uri;
+    let item_name = tag.name.local;
+    return new Error2(
+      "Unknown missile child element " + namespace + ":" + item_name
+    );
+  }
+}
+function parse_missiles_field_config() {
+  return from_list(
+    toList([
+      [
+        new Some(new Tag(new Name("", "OffensiveMissileReport"), toList([]))),
+        new ParseValueList(
+          parse_missile_field_config(),
+          new ParsedValueDecoder(missiles_child_decoder)
+        )
+      ]
+    ])
+  );
+}
+function parse_missiles(input2) {
+  let parse_result = parse_map(parse_missiles_field_config(), input2, false);
   if (parse_result.isOk()) {
     let parsed_missiles = parse_result[0][0];
     let next_input = parse_result[0][1];
@@ -11379,11 +11682,13 @@ function parse_ship_inner(loop$parse_state, loop$input) {
       );
     } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "AntiShip") {
       let next_input = $[0][1];
+      echo2("Parsing anti-ship weapons", "src/parse.gleam", 789);
       return try$(
-        parse_anti_ship(next_input),
+        parse_anti_ship_element(next_input),
         (_use0) => {
           let weapons = _use0[0];
           let next_input$1 = _use0[1];
+          echo2(weapons, "src/parse.gleam", 791);
           return parse_ship_inner(
             (() => {
               let _record = parse_state;
@@ -11554,10 +11859,15 @@ function parse_craft_strike_weapons_inner(craft_weapon_reports, input2) {
       (_use0) => {
         let missile = _use0[0];
         let next_input_2 = _use0[1];
-        return parse_craft_strike_inner(
-          prepend(missile, craft_weapon_reports),
-          next_input_2
-        );
+        if (missile instanceof WeaponTarget) {
+          let weapon = missile[0];
+          return parse_craft_strike_inner(
+            prepend(weapon, craft_weapon_reports),
+            next_input_2
+          );
+        } else {
+          return new Error2("Unexpected weapon type in craft strike");
+        }
       }
     );
   } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "WeaponReport" && $[0][0][0].attributes.hasLength(1) && $[0][0][0].attributes.head instanceof Attribute2 && $[0][0][0].attributes.head.name instanceof Name && $[0][0][0].attributes.head.name.uri === "http://www.w3.org/2001/XMLSchema-instance" && $[0][0][0].attributes.head.name.local === "type" && $[0][0][0].attributes.head.value === "CraftMissileReport") {
@@ -12296,11 +12606,11 @@ function parse_report(content) {
   let _pipe$2 = with_stripping(_pipe$1, true);
   return parse_report_xml(_pipe$2);
 }
-function echo(value, file, line) {
+function echo2(value, file, line) {
   const grey = "\x1B[90m";
   const reset_color = "\x1B[39m";
   const file_line = `${file}:${line}`;
-  const string_value = echo$inspect(value);
+  const string_value = echo$inspect2(value);
   if (globalThis.process?.stderr?.write) {
     const string5 = `${grey}${file_line}${reset_color}
 ${string_value}
@@ -12318,7 +12628,7 @@ ${string_value}`;
   }
   return value;
 }
-function echo$inspectString(str) {
+function echo$inspectString2(str) {
   let new_str = '"';
   for (let i = 0; i < str.length; i++) {
     let char = str[i];
@@ -12337,7 +12647,7 @@ function echo$inspectString(str) {
   new_str += '"';
   return new_str;
 }
-function echo$inspectDict(map6) {
+function echo$inspectDict2(map6) {
   let body = "dict.from_list([";
   let first = true;
   let key_value_pairs = [];
@@ -12347,47 +12657,47 @@ function echo$inspectDict(map6) {
   key_value_pairs.sort();
   key_value_pairs.forEach(([key, value]) => {
     if (!first) body = body + ", ";
-    body = body + "#(" + echo$inspect(key) + ", " + echo$inspect(value) + ")";
+    body = body + "#(" + echo$inspect2(key) + ", " + echo$inspect2(value) + ")";
     first = false;
   });
   return body + "])";
 }
-function echo$inspectCustomType(record) {
+function echo$inspectCustomType2(record) {
   const props = globalThis.Object.keys(record).map((label) => {
-    const value = echo$inspect(record[label]);
+    const value = echo$inspect2(record[label]);
     return isNaN(parseInt(label)) ? `${label}: ${value}` : value;
   }).join(", ");
   return props ? `${record.constructor.name}(${props})` : record.constructor.name;
 }
-function echo$inspectObject(v) {
+function echo$inspectObject2(v) {
   const name = Object.getPrototypeOf(v)?.constructor?.name || "Object";
   const props = [];
   for (const k of Object.keys(v)) {
-    props.push(`${echo$inspect(k)}: ${echo$inspect(v[k])}`);
+    props.push(`${echo$inspect2(k)}: ${echo$inspect2(v[k])}`);
   }
   const body = props.length ? " " + props.join(", ") + " " : "";
   const head = name === "Object" ? "" : name + " ";
   return `//js(${head}{${body}})`;
 }
-function echo$inspect(v) {
+function echo$inspect2(v) {
   const t = typeof v;
   if (v === true) return "True";
   if (v === false) return "False";
   if (v === null) return "//js(null)";
   if (v === void 0) return "Nil";
-  if (t === "string") return echo$inspectString(v);
+  if (t === "string") return echo$inspectString2(v);
   if (t === "bigint" || t === "number") return v.toString();
   if (globalThis.Array.isArray(v))
-    return `#(${v.map(echo$inspect).join(", ")})`;
+    return `#(${v.map(echo$inspect2).join(", ")})`;
   if (v instanceof List)
-    return `[${v.toArray().map(echo$inspect).join(", ")}]`;
+    return `[${v.toArray().map(echo$inspect2).join(", ")}]`;
   if (v instanceof UtfCodepoint)
     return `//utfcodepoint(${String.fromCodePoint(v.value)})`;
-  if (v instanceof BitArray) return echo$inspectBitArray(v);
-  if (v instanceof CustomType) return echo$inspectCustomType(v);
-  if (echo$isDict(v)) return echo$inspectDict(v);
+  if (v instanceof BitArray) return echo$inspectBitArray2(v);
+  if (v instanceof CustomType) return echo$inspectCustomType2(v);
+  if (echo$isDict2(v)) return echo$inspectDict2(v);
   if (v instanceof Set)
-    return `//js(Set(${[...v].map(echo$inspect).join(", ")}))`;
+    return `//js(Set(${[...v].map(echo$inspect2).join(", ")}))`;
   if (v instanceof RegExp) return `//js(${v})`;
   if (v instanceof Date) return `//js(Date("${v.toISOString()}"))`;
   if (v instanceof Function) {
@@ -12396,9 +12706,9 @@ function echo$inspect(v) {
       args.push(String.fromCharCode(i + 97));
     return `//fn(${args.join(", ")}) { ... }`;
   }
-  return echo$inspectObject(v);
+  return echo$inspectObject2(v);
 }
-function echo$inspectBitArray(bitArray) {
+function echo$inspectBitArray2(bitArray) {
   let endOfAlignedBytes = bitArray.bitOffset + 8 * Math.trunc(bitArray.bitSize / 8);
   let alignedBytes = bitArraySlice(
     bitArray,
@@ -12425,7 +12735,7 @@ function echo$inspectBitArray(bitArray) {
     return `<<${Array.from(alignedBytes.rawBuffer).join(", ")}>>`;
   }
 }
-function echo$isDict(value) {
+function echo$isDict2(value) {
   try {
     return value instanceof Dict;
   } catch {
