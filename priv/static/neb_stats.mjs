@@ -5182,6 +5182,11 @@ function missile_card(missile) {
   let _pipe$1 = to_precision(_pipe, 2);
   _block = float_to_string(_pipe$1);
   let damage_string = _block;
+  let _block$1;
+  let _pipe$2 = divideFloat(missile.damage_dealt, identity(missile.hit));
+  let _pipe$3 = to_precision(_pipe$2, 2);
+  _block$1 = float_to_string(_pipe$3);
+  let damage_per_hit = _block$1;
   return div(
     toList([class$("cell")]),
     toList([
@@ -5193,6 +5198,8 @@ function missile_card(missile) {
             toList([]),
             toList([
               text3("Damage Dealt: " + damage_string),
+              br(toList([])),
+              text3("Damage Per Hit: " + damage_per_hit),
               br(toList([])),
               text3("Carried: " + to_string(missile.carried)),
               br(toList([])),

@@ -349,11 +349,17 @@ fn gun_card(weapon: AntiShipWeapon, rounds_carried: Int) {
 fn missile_card(missile: Missile) {
   let damage_string =
     missile.damage_dealt |> float.to_precision(2) |> float.to_string
+  let damage_per_hit =
+    missile.damage_dealt /. int.to_float(missile.hit)
+    |> float.to_precision(2)
+    |> float.to_string
   div([class("cell")], [
     p([class("title is-5")], [text(missile.name)]),
     div([class("content")], [
       p([], [
         text("Damage Dealt: " <> damage_string),
+        br([]),
+        text("Damage Per Hit: " <> damage_per_hit),
         br([]),
         text("Carried: " <> int.to_string(missile.carried)),
         br([]),
