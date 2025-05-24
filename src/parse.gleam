@@ -859,16 +859,17 @@ fn parse_anti_ship_element(
   input: Input,
 ) -> Result(#(List(AntiShipWeapon), Input), String) {
   let parse_result = parse_map(anti_ship_element_field_config(), input, False)
-  echo parse_result
   case parse_result {
     Ok(#(parsed_fields, next_input)) -> {
-      let discrete_weapons =
-        get_parsed_discrete_weapons(parsed_fields)
-        |> result.unwrap([])
-      let continuous_weapons =
-        get_parsed_continuous_weapons(parsed_fields)
-        |> result.unwrap([])
-      Ok(#(list.append(discrete_weapons, continuous_weapons), next_input))
+      echo #("Getting anti ship children from", parsed_fields)
+      case dict.get(parsed_fields, Some(Tag(Name("", "Weapons"), []))) {
+        Ok(parse_helpers.ParsedValueSubElement(WeaponListTarget(weapons))) ->
+          Ok(#(weapons, next_input))
+        _ -> {
+          echo #("Failed to parse anti ship weapons", parsed_fields)
+          Error("Missing anti ship weapons")
+        }
+      }
     }
     Error(e) -> Error(e)
   }
@@ -881,15 +882,11 @@ fn anti_ship_weapons_child_decoder(
   echo tag
   case tag {
     Tag(Name("", "Weapons"), []) -> {
-      let weapons_result =
-        parsed_fields
-        |> dict.get(Some(Tag(Name("", "Weapons"), [])))
-      case weapons_result {
-        Ok(parse_helpers.ParsedValueSubElement(weapons)) -> {
-          Ok(weapons)
-        }
-        _ -> Error("Missing weapons")
-      }
+      let discrete_weapons =
+        get_parsed_discrete_weapons(parsed_fields) |> result.unwrap([])
+      let continuous_weapons =
+        get_parsed_continuous_weapons(parsed_fields) |> result.unwrap([])
+      Ok(WeaponListTarget(list.append(discrete_weapons, continuous_weapons)))
     }
     _ -> Error("Unexpected tag for anti ship weapons")
   }

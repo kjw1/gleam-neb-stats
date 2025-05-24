@@ -10648,6 +10648,12 @@ var WeaponTarget = class extends CustomType {
     this[0] = x0;
   }
 };
+var WeaponListTarget = class extends CustomType {
+  constructor(x0) {
+    super();
+    this[0] = x0;
+  }
+};
 var ParseReportState = class extends CustomType {
   constructor(winning_team, team_a, team_b) {
     super();
@@ -11065,26 +11071,6 @@ function parse_anti_ship_craft_missile(input2) {
     input2
   );
 }
-function anti_ship_weapons_child_decoder(tag, parsed_fields) {
-  echo2(tag, "src/parse.gleam", 881);
-  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "Weapons" && tag.attributes.hasLength(0)) {
-    let _block;
-    let _pipe = parsed_fields;
-    _block = map_get(
-      _pipe,
-      new Some(new Tag(new Name("", "Weapons"), toList([])))
-    );
-    let weapons_result = _block;
-    if (weapons_result.isOk() && weapons_result[0] instanceof ParsedValueSubElement) {
-      let weapons = weapons_result[0][0];
-      return new Ok(weapons);
-    } else {
-      return new Error2("Missing weapons");
-    }
-  } else {
-    return new Error2("Unexpected tag for anti ship weapons");
-  }
-}
 function get_parsed_continuous_weapons(parsed_fields) {
   let $ = map_get(
     parsed_fields,
@@ -11121,7 +11107,7 @@ function get_parsed_continuous_weapons(parsed_fields) {
     echo2(
       ["Failed to parse continuous weapons", parsed_fields],
       "src/parse.gleam",
-      930
+      927
     );
     return new Error2("Missing continuous weapons");
   }
@@ -11162,9 +11148,27 @@ function get_parsed_discrete_weapons(parsed_fields) {
     echo2(
       ["Failed to parse discrete weapons", parsed_fields],
       "src/parse.gleam",
-      968
+      965
     );
     return new Error2("Missing discrete weapons");
+  }
+}
+function anti_ship_weapons_child_decoder(tag, parsed_fields) {
+  echo2(tag, "src/parse.gleam", 882);
+  if (tag instanceof Tag && tag.name instanceof Name && tag.name.uri === "" && tag.name.local === "Weapons" && tag.attributes.hasLength(0)) {
+    let _block;
+    let _pipe = get_parsed_discrete_weapons(parsed_fields);
+    _block = unwrap(_pipe, toList([]));
+    let discrete_weapons = _block;
+    let _block$1;
+    let _pipe$1 = get_parsed_continuous_weapons(parsed_fields);
+    _block$1 = unwrap(_pipe$1, toList([]));
+    let continuous_weapons = _block$1;
+    return new Ok(
+      new WeaponListTarget(append(discrete_weapons, continuous_weapons))
+    );
+  } else {
+    return new Error2("Unexpected tag for anti ship weapons");
   }
 }
 function anti_ship_continuous_field_config() {
@@ -11411,21 +11415,29 @@ function anti_ship_element_field_config() {
 }
 function parse_anti_ship_element(input2) {
   let parse_result = parse_map(anti_ship_element_field_config(), input2, false);
-  echo2(parse_result, "src/parse.gleam", 862);
   if (parse_result.isOk()) {
     let parsed_fields = parse_result[0][0];
     let next_input = parse_result[0][1];
-    let _block;
-    let _pipe = get_parsed_discrete_weapons(parsed_fields);
-    _block = unwrap(_pipe, toList([]));
-    let discrete_weapons = _block;
-    let _block$1;
-    let _pipe$1 = get_parsed_continuous_weapons(parsed_fields);
-    _block$1 = unwrap(_pipe$1, toList([]));
-    let continuous_weapons = _block$1;
-    return new Ok(
-      [append(discrete_weapons, continuous_weapons), next_input]
+    echo2(
+      ["Getting anti ship children from", parsed_fields],
+      "src/parse.gleam",
+      864
     );
+    let $ = map_get(
+      parsed_fields,
+      new Some(new Tag(new Name("", "Weapons"), toList([])))
+    );
+    if ($.isOk() && $[0] instanceof ParsedValueSubElement && $[0][0] instanceof WeaponListTarget) {
+      let weapons = $[0][0][0];
+      return new Ok([weapons, next_input]);
+    } else {
+      echo2(
+        ["Failed to parse anti ship weapons", parsed_fields],
+        "src/parse.gleam",
+        869
+      );
+      return new Error2("Missing anti ship weapons");
+    }
   } else {
     let e = parse_result[0];
     return new Error2(e);
