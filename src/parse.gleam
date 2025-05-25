@@ -787,6 +787,7 @@ type ParseShipState {
     anti_ship_weapons: List(Weapon),
     anti_ship_missiles: List(report.Missile),
     defensive_weapons: List(DefensiveWeapon),
+    defensive_missiles: List(report.DefensiveMissile),
   )
 }
 
@@ -799,6 +800,7 @@ fn parse_ship(input) {
       anti_ship_weapons: [],
       anti_ship_missiles: [],
       defensive_weapons: [],
+      defensive_missiles: [],
     ),
     input,
   )
@@ -836,9 +838,15 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
       )
     }
     Ok(#(ElementStart(Tag(Name("", "Defenses"), [])), next_input)) -> {
-      use #(defenses, next_input_2) <- try(parse_defenses(next_input))
+      use
+        #(Defenses(defensive_weapons: dw, defensive_missiles: dm), next_input_2)
+      <- try(parse_defenses(next_input))
       parse_ship_inner(
-        ParseShipState(..parse_state, defensive_weapons: defenses),
+        ParseShipState(
+          ..parse_state,
+          defensive_weapons: dw,
+          defensive_missiles: dm,
+        ),
         next_input_2,
       )
     }
@@ -862,6 +870,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
           anti_ship_weapons: anti_ship_weapons,
           anti_ship_missiles: anti_ship_missiles,
           defensive_weapons: defensive_weapons,
+          defensive_missiles: defensive_missiles,
         ) -> {
           Ok(#(
             Ship(
@@ -871,6 +880,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
               anti_ship_weapons: anti_ship_weapons,
               anti_ship_missiles: anti_ship_missiles,
               defensive_weapons: defensive_weapons,
+              defensive_missiles: defensive_missiles,
             ),
             next_input,
           ))
@@ -886,21 +896,38 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
   }
 }
 
+type Defenses {
+  Defenses(
+    defensive_weapons: List(DefensiveWeapon),
+    defensive_missiles: List(report.DefensiveMissile),
+  )
+}
+
 fn parse_defenses(input) {
-  parse_defenses_inner([], input)
+  parse_defenses_inner(Defenses([], []), input)
 }
 
 fn parse_defenses_inner(
-  defenses: List(DefensiveWeapon),
+  defenses: Defenses,
   input: Input,
-) -> Result(#(List(DefensiveWeapon), Input), String) {
+) -> Result(#(Defenses, Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(Name("", "WeaponReports"), _)), next_input)) -> {
       use #(weapons, next_input_2) <- try(parse_defensive_weapon_reports(
         next_input,
       ))
-      parse_defenses_inner(weapons, next_input_2)
+      parse_defenses_inner(
+        Defenses(..defenses, defensive_weapons: weapons),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "MissileReports"), _)), next_input)) -> {
+      use #(missiles, next_input_2) <- try(parse_defensive_missiles(next_input))
+      parse_defenses_inner(
+        Defenses(..defenses, defensive_missiles: missiles),
+        next_input_2,
+      )
     }
     Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
@@ -910,6 +937,150 @@ fn parse_defenses_inner(
     Ok(#(xmlm.Data(data), _)) ->
       Error(string.concat(["Unexpected data at defenses: ", data]))
     Ok(#(xmlm.Dtd(_), next_input)) -> parse_defenses_inner(defenses, next_input)
+  }
+}
+
+type ParseDefensiveMissileState {
+  ParseDefensiveMissileState(
+    name: Option(String),
+    carried: Option(Int),
+    expended: Option(Int),
+    targets: Option(Int),
+    interceptions: Option(Int),
+    successes: Option(Int),
+  )
+}
+
+fn parse_defensive_missiles(input) {
+  parse_defensive_missiles_inner([], input)
+}
+
+fn parse_defensive_missiles_inner(
+  defensive_missiles: List(report.DefensiveMissile),
+  input: Input,
+) -> Result(#(List(report.DefensiveMissile), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "DefensiveMissileReport"), _)), next_input)) -> {
+      use #(missile, next_input_2) <- try(parse_defensive_missile(next_input))
+      parse_defensive_missiles_inner(
+        [missile, ..defensive_missiles],
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_defensive_missiles_inner(defensive_missiles, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(defensive_missiles, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at defenses: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_defensive_missiles_inner(defensive_missiles, next_input)
+  }
+}
+
+fn parse_defensive_missile(input) {
+  parse_defensive_missile_inner(
+    ParseDefensiveMissileState(
+      name: None,
+      carried: None,
+      expended: None,
+      targets: None,
+      interceptions: None,
+      successes: None,
+    ),
+    input,
+  )
+}
+
+fn parse_defensive_missile_inner(
+  parse_state: ParseDefensiveMissileState,
+  input: Input,
+) -> Result(#(report.DefensiveMissile, Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "MissileName"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_defensive_missile_inner(
+        ParseDefensiveMissileState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalCarried"), _)), next_input)) -> {
+      use #(carried, next_input_2) <- try(parse_int_element(next_input))
+      parse_defensive_missile_inner(
+        ParseDefensiveMissileState(..parse_state, carried: Some(carried)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalExpended"), _)), next_input)) -> {
+      use #(expended, next_input_2) <- try(parse_int_element(next_input))
+      parse_defensive_missile_inner(
+        ParseDefensiveMissileState(..parse_state, expended: Some(expended)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalTargets"), _)), next_input)) -> {
+      use #(targets, next_input_2) <- try(parse_int_element(next_input))
+      parse_defensive_missile_inner(
+        ParseDefensiveMissileState(..parse_state, targets: Some(targets)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalInterceptions"), _)), next_input)) -> {
+      use #(interceptions, next_input_2) <- try(parse_int_element(next_input))
+      parse_defensive_missile_inner(
+        ParseDefensiveMissileState(
+          ..parse_state,
+          interceptions: Some(interceptions),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalSuccesses"), _)), next_input)) -> {
+      use #(successes, next_input_2) <- try(parse_int_element(next_input))
+      parse_defensive_missile_inner(
+        ParseDefensiveMissileState(..parse_state, successes: Some(successes)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_defensive_missile_inner(parse_state, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseDefensiveMissileState(
+          name: Some(name),
+          carried: Some(carried),
+          expended: Some(expended),
+          targets: Some(targets),
+          interceptions: Some(interceptions),
+          successes: Some(successes),
+        ) -> {
+          Ok(#(
+            report.DefensiveMissile(
+              name: name,
+              carried: carried,
+              expended: expended,
+              targets: targets,
+              interceptions: interceptions,
+              successes: successes,
+            ),
+            next_input,
+          ))
+        }
+        _ -> {
+          echo parse_state
+          Error("Missing defensive missile data")
+        }
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at defenses: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) ->
+      parse_defensive_missile_inner(parse_state, next_input)
   }
 }
 

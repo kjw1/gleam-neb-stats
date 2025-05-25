@@ -42,6 +42,17 @@ pub type Missile {
   )
 }
 
+pub type DefensiveMissile {
+  DefensiveMissile(
+    name: String,
+    carried: Int,
+    expended: Int,
+    targets: Int,
+    interceptions: Int,
+    successes: Int,
+  )
+}
+
 pub type Ship {
   Ship(
     name: String,
@@ -50,6 +61,7 @@ pub type Ship {
     anti_ship_weapons: List(Weapon),
     anti_ship_missiles: List(Missile),
     defensive_weapons: List(DefensiveWeapon),
+    defensive_missiles: List(DefensiveMissile),
   )
 }
 
@@ -143,6 +155,16 @@ pub fn dummy_report() {
                 ),
               ),
             ],
+            defensive_missiles: [
+              DefensiveMissile(
+                name: "Defensive Missile A",
+                carried: 15,
+                expended: 10,
+                targets: 5,
+                interceptions: 3,
+                successes: 2,
+              ),
+            ],
           ),
         ],
         craft: [
@@ -215,6 +237,16 @@ pub fn dummy_report() {
                 miss: 2,
                 soft_killed: 2,
                 hard_killed: 3,
+              ),
+            ],
+            defensive_missiles: [
+              DefensiveMissile(
+                name: "Defensive Missile B",
+                carried: 20,
+                expended: 15,
+                targets: 7,
+                interceptions: 4,
+                successes: 3,
               ),
             ],
           ),

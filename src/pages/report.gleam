@@ -84,6 +84,12 @@ fn ship_detail(ship: Ship) {
     div([class("fixed-grid has-4-cols")], [div([class("grid")], gun_cards)])
   let defensive_weapon_cards =
     ship.defensive_weapons |> list.map(defensive_weapon_card)
+  let defensive_missile_cards =
+    ship.defensive_missiles |> list.map(defensive_missile_card)
+  let defensive_missile_grid =
+    div([class("fixed-grid has-4-cols")], [
+      div([class("grid")], defensive_missile_cards),
+    ])
   let defensive_weapon_grid =
     div([class("fixed-grid has-4-cols")], [
       div([class("grid")], defensive_weapon_cards),
@@ -116,6 +122,8 @@ fn ship_detail(ship: Ship) {
       missile_grid,
       h4([class("title is-4")], [text("Defensive Weapons")]),
       defensive_weapon_grid,
+      h4([class("title is-4")], [text("Defensive Missiles")]),
+      defensive_missile_grid,
     ]),
   ])
 }
@@ -234,6 +242,29 @@ fn defensive_weapon_card(weapon: report.DefensiveWeapon) {
         <> "/"
         <> int.to_string(weapon.weapon.targets_assigned),
       ),
+    ]),
+  ])
+}
+
+fn defensive_missile_card(missile: report.DefensiveMissile) {
+  let success_rate =
+    { int.to_float(missile.successes) /. int.to_float(missile.interceptions) }
+    |> float.to_precision(2)
+    |> float.to_string
+  div([class("cell")], [
+    p([class("title is-5")], [text(missile.name)]),
+    p([], [
+      text("Carried: " <> int.to_string(missile.carried)),
+      br([]),
+      text("Expended: " <> int.to_string(missile.expended)),
+      br([]),
+      text("Targets Assigned: " <> int.to_string(missile.targets)),
+      br([]),
+      text("Interceptions: " <> int.to_string(missile.interceptions)),
+      br([]),
+      text("Successes: " <> int.to_string(missile.successes)),
+      br([]),
+      text("Success Rate: " <> success_rate),
     ]),
   ])
 }
