@@ -1,8 +1,8 @@
 import data/report.{
-  type AntiShipWeapon, type Craft, type DefensiveWeapon, type Player,
-  type Report, type Ship, type Team, type TeamAOrB, AntiShipCraftMissileDetails,
-  AntiShipWeapon, AntiShipWeaponContinuousDetails, AntiShipWeaponGunDetails,
-  Craft, DefensiveWeapon, Player, Report, Ship, Team, TeamA, TeamB,
+  type Craft, type DefensiveWeapon, type Player, type Report, type Ship,
+  type Team, type TeamAOrB, type Weapon, ContinuousDetails, Craft,
+  CraftMissileDetails, DefensiveWeapon, GunDetails, Player, Report, Ship, Team,
+  TeamA, TeamB, Weapon,
 }
 import gleam/float
 import gleam/int
@@ -394,7 +394,7 @@ type ParseCraftState {
     carried: Option(Int),
     lost: Option(Int),
     sorties: Option(Int),
-    anti_ship_weapons: List(AntiShipWeapon),
+    anti_ship_weapons: List(Weapon),
   )
 }
 
@@ -498,14 +498,14 @@ fn parse_craft_report_inner(
   }
 }
 
-fn parse_craft_strike(input) -> Result(#(List(AntiShipWeapon), Input), String) {
+fn parse_craft_strike(input) -> Result(#(List(Weapon), Input), String) {
   parse_craft_strike_inner([], input)
 }
 
 fn parse_craft_strike_inner(
-  craft_weapon_reports: List(AntiShipWeapon),
+  craft_weapon_reports: List(Weapon),
   input,
-) -> Result(#(List(AntiShipWeapon), Input), String) {
+) -> Result(#(List(Weapon), Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(Name("", "GeneralWeapons"), _)), next_input)) -> {
@@ -525,16 +525,14 @@ fn parse_craft_strike_inner(
   }
 }
 
-fn parse_craft_strike_weapons(
-  input,
-) -> Result(#(List(AntiShipWeapon), Input), String) {
+fn parse_craft_strike_weapons(input) -> Result(#(List(Weapon), Input), String) {
   parse_craft_strike_weapons_inner([], input)
 }
 
 fn parse_craft_strike_weapons_inner(
-  craft_weapon_reports: List(AntiShipWeapon),
+  craft_weapon_reports: List(Weapon),
   input: Input,
-) -> Result(#(List(AntiShipWeapon), Input), String) {
+) -> Result(#(List(Weapon), Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(
@@ -593,7 +591,7 @@ type ParseAntiShipCraftMissileState {
     name: Option(String),
     damage_dealt: Option(Float),
     max_damage_per_round: Option(Float),
-    rounds_fired: Option(Int),
+    fired: Option(Int),
     hit: Option(Int),
     miss: Option(Int),
     soft_killed: Option(Int),
@@ -610,7 +608,7 @@ fn parse_anti_ship_craft_missile(input) {
       name: None,
       damage_dealt: None,
       max_damage_per_round: None,
-      rounds_fired: None,
+      fired: None,
       hit: None,
       miss: None,
       soft_killed: None,
@@ -657,12 +655,9 @@ fn parse_anti_ship_craft_missile_inner(
       )
     }
     Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
-      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
+      use #(fired, next_input_2) <- try(parse_int_element(next_input))
       parse_anti_ship_craft_missile_inner(
-        ParseAntiShipCraftMissileState(
-          ..parse_state,
-          rounds_fired: Some(rounds_fired),
-        ),
+        ParseAntiShipCraftMissileState(..parse_state, fired: Some(fired)),
         next_input_2,
       )
     }
@@ -717,7 +712,7 @@ fn parse_anti_ship_craft_missile_inner(
           name: Some(name),
           damage_dealt: Some(damage_dealt),
           max_damage_per_round: Some(max_damage_per_round),
-          rounds_fired: Some(rounds_fired),
+          fired: Some(fired),
           hit: Some(hit),
           miss: Some(miss),
           soft_killed: Some(soft_killed),
@@ -727,15 +722,15 @@ fn parse_anti_ship_craft_missile_inner(
           targets_destroyed: Some(targets_destroyed),
         ) -> {
           Ok(#(
-            AntiShipWeapon(
+            Weapon(
               name: name,
               damage_dealt: damage_dealt,
               max_damage_per_round: max_damage_per_round,
-              rounds_fired: rounds_fired,
+              fired: fired,
               hits: hit,
               targets_assigned: targets_assigned,
               targets_destroyed: targets_destroyed,
-              type_details: AntiShipCraftMissileDetails(
+              type_details: CraftMissileDetails(
                 miss: miss,
                 soft_killed: soft_killed,
                 hard_killed: hard_killed,
@@ -789,7 +784,7 @@ type ParseShipState {
     name: Option(String),
     class: Option(String),
     damage_taken: Option(Int),
-    anti_ship_weapons: List(AntiShipWeapon),
+    anti_ship_weapons: List(Weapon),
     anti_ship_missiles: List(report.Missile),
     defensive_weapons: List(DefensiveWeapon),
   )
@@ -919,7 +914,7 @@ fn parse_defenses_inner(
 }
 
 type ParseDefensiveWeaponState {
-  ParseDefensiveWeaponState(count: Option(Int), weapon: Option(AntiShipWeapon))
+  ParseDefensiveWeaponState(count: Option(Int), weapon: Option(Weapon))
 }
 
 fn parse_defensive_weapon_reports(
@@ -1048,9 +1043,9 @@ fn parse_anti_ship(input) {
 }
 
 fn parse_anti_ship_inner(
-  anti_ship: List(AntiShipWeapon),
+  anti_ship: List(Weapon),
   input: Input,
-) -> Result(#(List(AntiShipWeapon), Input), String) {
+) -> Result(#(List(Weapon), Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(Name("", "Weapons"), _)), next_input)) -> {
@@ -1074,9 +1069,9 @@ fn parse_anti_ship_weapons(input) {
 }
 
 fn parse_anti_ship_weapons_inner(
-  anti_ship_weapons: List(AntiShipWeapon),
+  anti_ship_weapons: List(Weapon),
   input: Input,
-) -> Result(#(List(AntiShipWeapon), Input), String) {
+) -> Result(#(List(Weapon), Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(
@@ -1134,7 +1129,7 @@ type ParseAntiShipContinuousWeaponState {
     name: Option(String),
     damage_dealt: Option(Float),
     max_damage_per_round: Option(Float),
-    rounds_fired: Option(Int),
+    fired: Option(Int),
     hits: Option(Int),
     shot_duration: Option(Float),
     battle_short_shots: Option(Int),
@@ -1149,7 +1144,7 @@ fn parse_anti_ship_continuous_weapon(input) {
       name: None,
       damage_dealt: None,
       max_damage_per_round: None,
-      rounds_fired: None,
+      fired: None,
       hits: None,
       shot_duration: None,
       battle_short_shots: None,
@@ -1216,12 +1211,9 @@ fn parse_anti_ship_continuous_weapon_inner(
       )
     }
     Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
-      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
+      use #(fired, next_input_2) <- try(parse_int_element(next_input))
       parse_anti_ship_continuous_weapon_inner(
-        ParseAntiShipContinuousWeaponState(
-          ..parse_state,
-          rounds_fired: Some(rounds_fired),
-        ),
+        ParseAntiShipContinuousWeaponState(..parse_state, fired: Some(fired)),
         next_input_2,
       )
     }
@@ -1264,7 +1256,7 @@ fn parse_anti_ship_continuous_weapon_inner(
           name: Some(name),
           damage_dealt: Some(damage),
           max_damage_per_round: Some(max_damage),
-          rounds_fired: Some(rounds_fired),
+          fired: Some(fired),
           hits: Some(hits),
           shot_duration: Some(shot_duration),
           battle_short_shots: Some(battle_short_shots),
@@ -1272,15 +1264,15 @@ fn parse_anti_ship_continuous_weapon_inner(
           targets_destroyed: Some(targets_destroyed),
         ) ->
           Ok(#(
-            AntiShipWeapon(
+            Weapon(
               name: name,
               damage_dealt: damage,
               max_damage_per_round: max_damage,
-              type_details: AntiShipWeaponContinuousDetails(
+              type_details: ContinuousDetails(
                 shot_duration: shot_duration,
                 battle_short_shots: battle_short_shots,
               ),
-              rounds_fired: rounds_fired,
+              fired: fired,
               hits: hits,
               targets_assigned: targets_assigned,
               targets_destroyed: targets_destroyed,
@@ -1304,7 +1296,7 @@ type ParseAntiShipWeaponState {
     name: Option(String),
     max_damage_per_round: Option(Float),
     rounds_carried: Option(Int),
-    rounds_fired: Option(Int),
+    fired: Option(Int),
     hits: Option(Int),
     damage_dealt: Option(Float),
     targets_assigned: Option(Int),
@@ -1319,7 +1311,7 @@ fn parse_anti_ship_weapon(input) {
       damage_dealt: None,
       max_damage_per_round: None,
       rounds_carried: None,
-      rounds_fired: None,
+      fired: None,
       hits: None,
       targets_assigned: None,
       targets_destroyed: None,
@@ -1331,7 +1323,7 @@ fn parse_anti_ship_weapon(input) {
 fn parse_anti_ship_weapon_inner(
   parse_state,
   input,
-) -> Result(#(AntiShipWeapon, Input), String) {
+) -> Result(#(Weapon, Input), String) {
   case xmlm.signal(input) {
     Error(e) -> Error(xmlm.input_error_to_string(e))
     Ok(#(ElementStart(Tag(Name("", "Name"), _)), next_input)) -> {
@@ -1391,12 +1383,9 @@ fn parse_anti_ship_weapon_inner(
       )
     }
     Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
-      use #(rounds_fired, next_input_2) <- try(parse_int_element(next_input))
+      use #(fired, next_input_2) <- try(parse_int_element(next_input))
       parse_anti_ship_weapon_inner(
-        ParseAntiShipWeaponState(
-          ..parse_state,
-          rounds_fired: Some(rounds_fired),
-        ),
+        ParseAntiShipWeaponState(..parse_state, fired: Some(fired)),
         next_input_2,
       )
     }
@@ -1418,20 +1407,18 @@ fn parse_anti_ship_weapon_inner(
           damage_dealt: Some(damage),
           max_damage_per_round: Some(max_damage),
           rounds_carried: Some(rounds_carried),
-          rounds_fired: Some(rounds_fired),
+          fired: Some(fired),
           hits: Some(hits),
           targets_assigned: Some(targets_assigned),
           targets_destroyed: Some(targets_destroyed),
         ) ->
           Ok(#(
-            AntiShipWeapon(
+            Weapon(
               name: name,
               damage_dealt: damage,
               max_damage_per_round: max_damage,
-              type_details: AntiShipWeaponGunDetails(
-                rounds_carried: rounds_carried,
-              ),
-              rounds_fired: rounds_fired,
+              type_details: GunDetails(rounds_carried: rounds_carried),
+              fired: fired,
               hits: hits,
               targets_assigned: targets_assigned,
               targets_destroyed: targets_destroyed,

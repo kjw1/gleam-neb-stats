@@ -4851,12 +4851,12 @@ var TeamA = class extends CustomType {
 };
 var TeamB = class extends CustomType {
 };
-var AntiShipWeapon = class extends CustomType {
-  constructor(name, max_damage_per_round, rounds_fired, hits, damage_dealt, type_details, targets_assigned, targets_destroyed) {
+var Weapon = class extends CustomType {
+  constructor(name, max_damage_per_round, fired, hits, damage_dealt, type_details, targets_assigned, targets_destroyed) {
     super();
     this.name = name;
     this.max_damage_per_round = max_damage_per_round;
-    this.rounds_fired = rounds_fired;
+    this.fired = fired;
     this.hits = hits;
     this.damage_dealt = damage_dealt;
     this.type_details = type_details;
@@ -4864,20 +4864,20 @@ var AntiShipWeapon = class extends CustomType {
     this.targets_destroyed = targets_destroyed;
   }
 };
-var AntiShipWeaponGunDetails = class extends CustomType {
+var GunDetails = class extends CustomType {
   constructor(rounds_carried) {
     super();
     this.rounds_carried = rounds_carried;
   }
 };
-var AntiShipWeaponContinuousDetails = class extends CustomType {
+var ContinuousDetails = class extends CustomType {
   constructor(shot_duration, battle_short_shots) {
     super();
     this.shot_duration = shot_duration;
     this.battle_short_shots = battle_short_shots;
   }
 };
-var AntiShipCraftMissileDetails = class extends CustomType {
+var CraftMissileDetails = class extends CustomType {
   constructor(sortied, miss, soft_killed, hard_killed) {
     super();
     this.sortied = sortied;
@@ -5001,7 +5001,7 @@ function defensive_weapon_card(weapon) {
   let _block;
   let _pipe = divideFloat(
     identity(weapon.weapon.hits),
-    identity(weapon.weapon.rounds_fired)
+    identity(weapon.weapon.fired)
   );
   let _pipe$1 = to_precision(_pipe, 2);
   _block = float_to_string(_pipe$1);
@@ -5015,7 +5015,7 @@ function defensive_weapon_card(weapon) {
         toList([
           text3("Count: " + to_string(weapon.count)),
           br(toList([])),
-          text3("Rounds Fired: " + to_string(weapon.weapon.rounds_fired)),
+          text3("Rounds Fired: " + to_string(weapon.weapon.fired)),
           br(toList([])),
           text3("Hits: " + to_string(weapon.weapon.hits)),
           br(toList([])),
@@ -5040,12 +5040,12 @@ function continuous_card(weapon, shot_duration, battle_short_shots) {
   let _block$1;
   let _pipe$2 = divideFloat(
     identity(weapon.hits),
-    identity(weapon.rounds_fired)
+    identity(weapon.fired)
   );
   let _pipe$3 = to_precision(_pipe$2, 2);
   _block$1 = float_to_string(_pipe$3);
   let accuracy = _block$1;
-  let firing_duration = identity(weapon.rounds_fired) * shot_duration;
+  let firing_duration = identity(weapon.fired) * shot_duration;
   let _block$2;
   let _pipe$4 = firing_duration;
   let _pipe$5 = to_precision(_pipe$4, 2);
@@ -5114,16 +5114,13 @@ function gun_card(weapon, rounds_carried) {
   let _block$1;
   let _pipe$2 = divideFloat(
     identity(weapon.hits),
-    identity(weapon.rounds_fired)
+    identity(weapon.fired)
   );
   let _pipe$3 = to_precision(_pipe$2, 2);
   _block$1 = float_to_string(_pipe$3);
   let accuracy = _block$1;
   let _block$2;
-  let _pipe$4 = divideFloat(
-    weapon.damage_dealt,
-    identity(weapon.rounds_fired)
-  );
+  let _pipe$4 = divideFloat(weapon.damage_dealt, identity(weapon.fired));
   let _pipe$5 = to_precision(_pipe$4, 2);
   _block$2 = float_to_string(_pipe$5);
   let damage_per_shot = _block$2;
@@ -5149,7 +5146,7 @@ function gun_card(weapon, rounds_carried) {
           br(toList([])),
           text3("Rounds Carried: " + to_string(rounds_carried)),
           br(toList([])),
-          text3("Rounds Fired: " + to_string(weapon.rounds_fired)),
+          text3("Rounds Fired: " + to_string(weapon.fired)),
           br(toList([])),
           text3("Hits: " + to_string(weapon.hits)),
           br(toList([])),
@@ -5165,10 +5162,10 @@ function gun_card(weapon, rounds_carried) {
 }
 function weapon_card(weapon) {
   let $ = weapon.type_details;
-  if ($ instanceof AntiShipWeaponGunDetails) {
+  if ($ instanceof GunDetails) {
     let rounds_carried = $.rounds_carried;
     return gun_card(weapon, rounds_carried);
-  } else if ($ instanceof AntiShipWeaponContinuousDetails) {
+  } else if ($ instanceof ContinuousDetails) {
     let shot_duration = $.shot_duration;
     let battle_short_shots = $.battle_short_shots;
     return continuous_card(weapon, shot_duration, battle_short_shots);
@@ -9875,12 +9872,12 @@ var ParseCraftState = class extends CustomType {
   }
 };
 var ParseAntiShipCraftMissileState = class extends CustomType {
-  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hit, miss, soft_killed, hard_killed, sortied, targets_assigned, targets_destroyed) {
+  constructor(name, damage_dealt, max_damage_per_round, fired, hit, miss, soft_killed, hard_killed, sortied, targets_assigned, targets_destroyed) {
     super();
     this.name = name;
     this.damage_dealt = damage_dealt;
     this.max_damage_per_round = max_damage_per_round;
-    this.rounds_fired = rounds_fired;
+    this.fired = fired;
     this.hit = hit;
     this.miss = miss;
     this.soft_killed = soft_killed;
@@ -9909,12 +9906,12 @@ var ParseDefensiveWeaponState = class extends CustomType {
   }
 };
 var ParseAntiShipContinuousWeaponState = class extends CustomType {
-  constructor(name, damage_dealt, max_damage_per_round, rounds_fired, hits, shot_duration, battle_short_shots, targets_assigned, targets_destroyed) {
+  constructor(name, damage_dealt, max_damage_per_round, fired, hits, shot_duration, battle_short_shots, targets_assigned, targets_destroyed) {
     super();
     this.name = name;
     this.damage_dealt = damage_dealt;
     this.max_damage_per_round = max_damage_per_round;
-    this.rounds_fired = rounds_fired;
+    this.fired = fired;
     this.hits = hits;
     this.shot_duration = shot_duration;
     this.battle_short_shots = battle_short_shots;
@@ -9923,12 +9920,12 @@ var ParseAntiShipContinuousWeaponState = class extends CustomType {
   }
 };
 var ParseAntiShipWeaponState = class extends CustomType {
-  constructor(name, max_damage_per_round, rounds_carried, rounds_fired, hits, damage_dealt, targets_assigned, targets_destroyed) {
+  constructor(name, max_damage_per_round, rounds_carried, fired, hits, damage_dealt, targets_assigned, targets_destroyed) {
     super();
     this.name = name;
     this.max_damage_per_round = max_damage_per_round;
     this.rounds_carried = rounds_carried;
-    this.rounds_fired = rounds_fired;
+    this.fired = fired;
     this.hits = hits;
     this.damage_dealt = damage_dealt;
     this.targets_assigned = targets_assigned;
@@ -10112,7 +10109,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 new Some(name),
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 _record.miss,
                 _record.soft_killed,
@@ -10140,7 +10137,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 new Some(damage),
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 _record.miss,
                 _record.soft_killed,
@@ -10168,7 +10165,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 new Some(max_damage),
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 _record.miss,
                 _record.soft_killed,
@@ -10187,7 +10184,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
       return try$(
         parse_int_element(next_input),
         (_use0) => {
-          let rounds_fired = _use0[0];
+          let fired = _use0[0];
           let next_input_2 = _use0[1];
           return parse_anti_ship_craft_missile_inner(
             (() => {
@@ -10196,7 +10193,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                new Some(rounds_fired),
+                new Some(fired),
                 _record.hit,
                 _record.miss,
                 _record.soft_killed,
@@ -10224,7 +10221,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 new Some(hits),
                 _record.miss,
                 _record.soft_killed,
@@ -10252,7 +10249,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 _record.miss,
                 _record.soft_killed,
@@ -10280,7 +10277,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 new Some(miss),
                 _record.soft_killed,
@@ -10308,7 +10305,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 _record.miss,
                 new Some(soft_kill),
@@ -10336,7 +10333,7 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hit,
                 _record.miss,
                 _record.soft_killed,
@@ -10360,11 +10357,11 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
       );
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      if (parse_state instanceof ParseAntiShipCraftMissileState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hit instanceof Some && parse_state.miss instanceof Some && parse_state.soft_killed instanceof Some && parse_state.hard_killed instanceof Some && parse_state.sortied instanceof Some && parse_state.targets_assigned instanceof Some && parse_state.targets_destroyed instanceof Some) {
+      if (parse_state instanceof ParseAntiShipCraftMissileState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.fired instanceof Some && parse_state.hit instanceof Some && parse_state.miss instanceof Some && parse_state.soft_killed instanceof Some && parse_state.hard_killed instanceof Some && parse_state.sortied instanceof Some && parse_state.targets_assigned instanceof Some && parse_state.targets_destroyed instanceof Some) {
         let name = parse_state.name[0];
         let damage_dealt = parse_state.damage_dealt[0];
         let max_damage_per_round = parse_state.max_damage_per_round[0];
-        let rounds_fired = parse_state.rounds_fired[0];
+        let fired = parse_state.fired[0];
         let hit = parse_state.hit[0];
         let miss = parse_state.miss[0];
         let soft_killed = parse_state.soft_killed[0];
@@ -10374,18 +10371,13 @@ function parse_anti_ship_craft_missile_inner(loop$parse_state, loop$input) {
         let targets_destroyed = parse_state.targets_destroyed[0];
         return new Ok(
           [
-            new AntiShipWeapon(
+            new Weapon(
               name,
               max_damage_per_round,
-              rounds_fired,
+              fired,
               hit,
               damage_dealt,
-              new AntiShipCraftMissileDetails(
-                sortied,
-                miss,
-                soft_killed,
-                hard_killed
-              ),
+              new CraftMissileDetails(sortied, miss, soft_killed, hard_killed),
               targets_assigned,
               targets_destroyed
             ),
@@ -10449,7 +10441,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 new Some(name),
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10475,7 +10467,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 new Some(damage),
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10501,7 +10493,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 new Some(max_damage),
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10527,7 +10519,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10553,7 +10545,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10570,7 +10562,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
       return try$(
         parse_int_element(next_input),
         (_use0) => {
-          let rounds_fired = _use0[0];
+          let fired = _use0[0];
           let next_input_2 = _use0[1];
           return parse_anti_ship_continuous_weapon_inner(
             (() => {
@@ -10579,7 +10571,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                new Some(rounds_fired),
+                new Some(fired),
                 _record.hits,
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10605,7 +10597,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 new Some(hits),
                 _record.shot_duration,
                 _record.battle_short_shots,
@@ -10631,7 +10623,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 new Some(shot_duration),
                 _record.battle_short_shots,
@@ -10657,7 +10649,7 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.damage_dealt,
                 _record.max_damage_per_round,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.shot_duration,
                 new Some(battle_short_shots),
@@ -10682,11 +10674,11 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
       );
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      if (parse_state instanceof ParseAntiShipContinuousWeaponState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hits instanceof Some && parse_state.shot_duration instanceof Some && parse_state.battle_short_shots instanceof Some && parse_state.targets_assigned instanceof Some && parse_state.targets_destroyed instanceof Some) {
+      if (parse_state instanceof ParseAntiShipContinuousWeaponState && parse_state.name instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.fired instanceof Some && parse_state.hits instanceof Some && parse_state.shot_duration instanceof Some && parse_state.battle_short_shots instanceof Some && parse_state.targets_assigned instanceof Some && parse_state.targets_destroyed instanceof Some) {
         let name = parse_state.name[0];
         let damage = parse_state.damage_dealt[0];
         let max_damage = parse_state.max_damage_per_round[0];
-        let rounds_fired = parse_state.rounds_fired[0];
+        let fired = parse_state.fired[0];
         let hits = parse_state.hits[0];
         let shot_duration = parse_state.shot_duration[0];
         let battle_short_shots = parse_state.battle_short_shots[0];
@@ -10694,16 +10686,13 @@ function parse_anti_ship_continuous_weapon_inner(loop$parse_state, loop$input) {
         let targets_destroyed = parse_state.targets_destroyed[0];
         return new Ok(
           [
-            new AntiShipWeapon(
+            new Weapon(
               name,
               max_damage,
-              rounds_fired,
+              fired,
               hits,
               damage,
-              new AntiShipWeaponContinuousDetails(
-                shot_duration,
-                battle_short_shots
-              ),
+              new ContinuousDetails(shot_duration, battle_short_shots),
               targets_assigned,
               targets_destroyed
             ),
@@ -10765,7 +10754,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 new Some(name),
                 _record.max_damage_per_round,
                 _record.rounds_carried,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.damage_dealt,
                 _record.targets_assigned,
@@ -10790,7 +10779,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.max_damage_per_round,
                 _record.rounds_carried,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 new Some(damage),
                 _record.targets_assigned,
@@ -10815,7 +10804,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 new Some(max_damage),
                 _record.rounds_carried,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.damage_dealt,
                 _record.targets_assigned,
@@ -10840,7 +10829,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.max_damage_per_round,
                 _record.rounds_carried,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.damage_dealt,
                 new Some(targets_assigned),
@@ -10865,7 +10854,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.max_damage_per_round,
                 _record.rounds_carried,
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.damage_dealt,
                 _record.targets_assigned,
@@ -10890,7 +10879,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.max_damage_per_round,
                 new Some(rounds_carried),
-                _record.rounds_fired,
+                _record.fired,
                 _record.hits,
                 _record.damage_dealt,
                 _record.targets_assigned,
@@ -10906,7 +10895,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
       return try$(
         parse_int_element(next_input),
         (_use0) => {
-          let rounds_fired = _use0[0];
+          let fired = _use0[0];
           let next_input_2 = _use0[1];
           return parse_anti_ship_weapon_inner(
             (() => {
@@ -10915,7 +10904,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.max_damage_per_round,
                 _record.rounds_carried,
-                new Some(rounds_fired),
+                new Some(fired),
                 _record.hits,
                 _record.damage_dealt,
                 _record.targets_assigned,
@@ -10940,7 +10929,7 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
                 _record.name,
                 _record.max_damage_per_round,
                 _record.rounds_carried,
-                _record.rounds_fired,
+                _record.fired,
                 new Some(hits),
                 _record.damage_dealt,
                 _record.targets_assigned,
@@ -10961,24 +10950,24 @@ function parse_anti_ship_weapon_inner(loop$parse_state, loop$input) {
       );
     } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
       let next_input = $[0][1];
-      if (parse_state instanceof ParseAntiShipWeaponState && parse_state.name instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_carried instanceof Some && parse_state.rounds_fired instanceof Some && parse_state.hits instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.targets_assigned instanceof Some && parse_state.targets_destroyed instanceof Some) {
+      if (parse_state instanceof ParseAntiShipWeaponState && parse_state.name instanceof Some && parse_state.max_damage_per_round instanceof Some && parse_state.rounds_carried instanceof Some && parse_state.fired instanceof Some && parse_state.hits instanceof Some && parse_state.damage_dealt instanceof Some && parse_state.targets_assigned instanceof Some && parse_state.targets_destroyed instanceof Some) {
         let name = parse_state.name[0];
         let max_damage = parse_state.max_damage_per_round[0];
         let rounds_carried = parse_state.rounds_carried[0];
-        let rounds_fired = parse_state.rounds_fired[0];
+        let fired = parse_state.fired[0];
         let hits = parse_state.hits[0];
         let damage = parse_state.damage_dealt[0];
         let targets_assigned = parse_state.targets_assigned[0];
         let targets_destroyed = parse_state.targets_destroyed[0];
         return new Ok(
           [
-            new AntiShipWeapon(
+            new Weapon(
               name,
               max_damage,
-              rounds_fired,
+              fired,
               hits,
               damage,
-              new AntiShipWeaponGunDetails(rounds_carried),
+              new GunDetails(rounds_carried),
               targets_assigned,
               targets_destroyed
             ),
