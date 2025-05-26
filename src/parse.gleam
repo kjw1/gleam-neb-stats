@@ -395,6 +395,7 @@ type ParseCraftState {
     lost: Option(Int),
     sorties: Option(Int),
     anti_ship_weapons: List(Weapon),
+    space_superiority_weapons: List(Weapon),
   )
 }
 
@@ -407,6 +408,7 @@ fn parse_craft_report(input) {
       lost: None,
       sorties: None,
       anti_ship_weapons: [],
+      space_superiority_weapons: [],
     ),
     input,
   )
@@ -460,6 +462,13 @@ fn parse_craft_report_inner(
         next_input,
       )
     }
+    Ok(#(ElementStart(Tag(Name("", "SpaceSuperiorityReport"), _)), next_input)) -> {
+      use #(weapons, next_input_2) <- try(parse_craft_strike(next_input))
+      parse_craft_report_inner(
+        ParseCraftState(..parse_state, space_superiority_weapons: weapons),
+        next_input_2,
+      )
+    }
     Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_craft_report_inner(parse_state, next_input_2)
@@ -473,6 +482,7 @@ fn parse_craft_report_inner(
           lost: Some(lost),
           sorties: Some(sorties),
           anti_ship_weapons: anti_ship_weapons,
+          space_superiority_weapons: space_superiority_weapons,
         ) -> {
           Ok(#(
             Craft(
@@ -482,6 +492,7 @@ fn parse_craft_report_inner(
               lost: lost,
               sorties: sorties,
               anti_ship_weapons: anti_ship_weapons,
+              space_superiority_weapons: space_superiority_weapons,
             ),
             next_input,
           ))
@@ -551,7 +562,33 @@ fn parse_craft_strike_weapons_inner(
       next_input,
     )) -> {
       use #(missile, next_input_2) <- try(parse_anti_ship_weapon(next_input))
-      parse_craft_strike_inner([missile, ..craft_weapon_reports], next_input_2)
+      parse_craft_strike_weapons_inner(
+        [missile, ..craft_weapon_reports],
+        next_input_2,
+      )
+    }
+    Ok(#(
+      ElementStart(Tag(
+        Name("", "WeaponReport"),
+        [
+          xmlm.Attribute(
+            name: Name(
+              uri: "http://www.w3.org/2001/XMLSchema-instance",
+              local: "type",
+            ),
+            value: "ContinuousWeaponReport",
+          ),
+        ],
+      )),
+      next_input,
+    )) -> {
+      use #(gun, next_input_2) <- try(parse_anti_ship_continuous_weapon(
+        next_input,
+      ))
+      parse_craft_strike_weapons_inner(
+        [gun, ..craft_weapon_reports],
+        next_input_2,
+      )
     }
     Ok(#(
       ElementStart(Tag(
@@ -571,11 +608,14 @@ fn parse_craft_strike_weapons_inner(
       use #(missile, next_input_2) <- try(parse_anti_ship_craft_missile(
         next_input,
       ))
-      parse_craft_strike_inner([missile, ..craft_weapon_reports], next_input_2)
+      parse_craft_strike_weapons_inner(
+        [missile, ..craft_weapon_reports],
+        next_input_2,
+      )
     }
-    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+    Ok(#(ElementStart(Tag(name, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
-      parse_craft_strike_inner(craft_weapon_reports, next_input_2)
+      parse_craft_strike_weapons_inner(craft_weapon_reports, next_input_2)
     }
     Ok(#(xmlm.ElementEnd, next_input)) ->
       Ok(#(craft_weapon_reports, next_input))
@@ -644,7 +684,10 @@ fn parse_anti_ship_craft_missile_inner(
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(Name("", "MaxDamagePerShot"), _)), next_input)) -> {
+    Ok(#(
+      ElementStart(Tag(Name("", "IndividualDamagePotential"), _)),
+      next_input,
+    )) -> {
       use #(max_damage, next_input_2) <- try(parse_float_element(next_input))
       parse_anti_ship_craft_missile_inner(
         ParseAntiShipCraftMissileState(
@@ -654,14 +697,14 @@ fn parse_anti_ship_craft_missile_inner(
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(Name("", "ShotsFired"), _)), next_input)) -> {
+    Ok(#(ElementStart(Tag(Name("", "TotalExpended"), _)), next_input)) -> {
       use #(fired, next_input_2) <- try(parse_int_element(next_input))
       parse_anti_ship_craft_missile_inner(
         ParseAntiShipCraftMissileState(..parse_state, fired: Some(fired)),
         next_input_2,
       )
     }
-    Ok(#(ElementStart(Tag(Name("", "HitCount"), _)), next_input)) -> {
+    Ok(#(ElementStart(Tag(Name("", "Hits"), _)), next_input)) -> {
       use #(hits, next_input_2) <- try(parse_int_element(next_input))
       parse_anti_ship_craft_missile_inner(
         ParseAntiShipCraftMissileState(..parse_state, hit: Some(hits)),
@@ -698,6 +741,28 @@ fn parse_anti_ship_craft_missile_inner(
         ParseAntiShipCraftMissileState(
           ..parse_state,
           hard_killed: Some(hard_kill),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TargetsAssigned"), _)), next_input)) -> {
+      use #(targets_assigned, next_input_2) <- try(parse_int_element(next_input))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          targets_assigned: Some(targets_assigned),
+        ),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TargetsDestroyed"), _)), next_input)) -> {
+      use #(targets_destroyed, next_input_2) <- try(parse_int_element(
+        next_input,
+      ))
+      parse_anti_ship_craft_missile_inner(
+        ParseAntiShipCraftMissileState(
+          ..parse_state,
+          targets_destroyed: Some(targets_destroyed),
         ),
         next_input_2,
       )
@@ -1197,7 +1262,6 @@ fn parse_defensive_missile_inner(
           ))
         }
         _ -> {
-          echo parse_state
           Error("Missing defensive missile data")
         }
       }

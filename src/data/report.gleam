@@ -82,6 +82,7 @@ pub type Craft {
     lost: Int,
     sorties: Int,
     anti_ship_weapons: List(Weapon),
+    space_superiority_weapons: List(Weapon),
   )
 }
 
@@ -183,6 +184,7 @@ pub fn dummy_report() {
             lost: 2,
             sorties: 10,
             anti_ship_weapons: [],
+            space_superiority_weapons: [],
           ),
         ],
       ),
@@ -270,6 +272,7 @@ pub fn dummy_report() {
             lost: 5,
             sorties: 20,
             anti_ship_weapons: [],
+            space_superiority_weapons: [],
           ),
         ],
       ),

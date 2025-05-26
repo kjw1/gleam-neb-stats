@@ -61,7 +61,10 @@ fn craft_detail(craft: Craft) {
       div([class("content")], [
         text("Class: " <> craft.class),
         br([]),
-        text("Damage Dealt: " <> float.to_string(craft_damage_dealt(craft))),
+        text(
+          "Damage Dealt: "
+          <> float.to_string(craft_anti_ship_damage_dealt(craft)),
+        ),
         br([]),
         text("Carried: " <> int.to_string(craft.carried)),
         br([]),
@@ -69,7 +72,15 @@ fn craft_detail(craft: Craft) {
         br([]),
         text("Sorties: " <> int.to_string(craft.sorties)),
         br([]),
+        html.h4([class("title is-4")], [text("Anti Ship Weapons")]),
         weapon_grid,
+        html.h4([class("title is-4")], [text("Space Superiority Weapons")]),
+        div([class("fixed-grid has-4-cols")], [
+          div(
+            [class("grid")],
+            craft.space_superiority_weapons |> list.map(weapon_card),
+          ),
+        ]),
       ]),
     ]),
   ])
@@ -165,7 +176,9 @@ fn team_box(team: Team, team_id: report.TeamAOrB, winner: report.TeamAOrB) {
 }
 
 fn player_box(player: Player) {
-  let total_damage = total_damage_dealt(player.ships)
+  let total_damage =
+    total_damage_dealt(player.ships) +. total_craft_damage_dealt(player.craft)
+    |> float.to_precision(2)
   let craft_cards = player.craft |> list.map(craft_card)
   let ship_cards = player.ships |> list.map(ship_card)
   let cards = list.append(ship_cards, craft_cards)
@@ -205,7 +218,7 @@ fn ship_card(ship: Ship) {
 }
 
 fn craft_card(craft: Craft) {
-  let damage_dealt = craft_damage_dealt(craft)
+  let damage_dealt = craft_anti_ship_damage_dealt(craft)
   div([event.on_click(FocusCraft(craft)), class("card")], [
     div([class("card-header")], [
       p([class("card-header-title")], [text(craft.name)]),
@@ -214,7 +227,7 @@ fn craft_card(craft: Craft) {
       div([class("content")], [
         text(craft.class),
         br([]),
-        text("Damage Dealt: " <> float.to_string(damage_dealt)),
+        text("Anti Ship Damage Dealt: " <> float.to_string(damage_dealt)),
         br([]),
         text("Carried: " <> int.to_string(craft.carried)),
         br([]),
@@ -234,9 +247,44 @@ fn weapon_card(weapon: Weapon) {
       shot_duration: shot_duration,
       battle_short_shots: battle_short_shots,
     ) -> continuous_card(weapon, shot_duration, battle_short_shots)
-    CraftMissileDetails(sortied: _, miss: _, soft_killed: _, hard_killed: _) ->
-      div([], [])
+    CraftMissileDetails(
+      sortied: sortied,
+      miss: miss,
+      soft_killed: soft_killed,
+      hard_killed: hard_killed,
+    ) -> craft_missile_card(weapon, sortied, miss, soft_killed, hard_killed)
   }
+}
+
+fn craft_missile_card(
+  missile: Weapon,
+  sortied: Int,
+  miss: Int,
+  soft_killed: Int,
+  hard_killed: Int,
+) {
+  let damage_string =
+    missile.damage_dealt |> float.to_precision(2) |> float.to_string
+  div([class("cell")], [
+    p([class("title is-5")], [text(missile.name <> " Missile")]),
+    p([], [
+      text("Damage Dealt: " <> damage_string),
+      br([]),
+      text("Max Damage Each: " <> float.to_string(missile.max_damage_per_round)),
+      br([]),
+      text("Expended: " <> int.to_string(missile.fired)),
+      br([]),
+      text("Hits: " <> int.to_string(missile.hits)),
+      br([]),
+      text("Carried: " <> int.to_string(sortied)),
+      br([]),
+      text("Miss: " <> int.to_string(miss)),
+      br([]),
+      text("Soft Kills: " <> int.to_string(soft_killed)),
+      br([]),
+      text("Hard Kills: " <> int.to_string(hard_killed)),
+    ]),
+  ])
 }
 
 fn defensive_weapon_card(weapon: report.DefensiveWeapon) {
@@ -450,7 +498,7 @@ fn ship_gun_damage_dealt(ship: Ship) {
   |> float.to_precision(2)
 }
 
-fn craft_damage_dealt(craft: Craft) {
+fn craft_anti_ship_damage_dealt(craft: Craft) {
   craft.anti_ship_weapons
   |> list.map(fn(w) { w.damage_dealt })
   |> list.reduce(fn(a, b) { a +. b })
@@ -460,4 +508,12 @@ fn craft_damage_dealt(craft: Craft) {
 
 fn ship_damage_dealt(ship: Ship) {
   ship_missile_damage_dealt(ship) +. ship_gun_damage_dealt(ship)
+}
+
+fn total_craft_damage_dealt(crafts: List(Craft)) {
+  crafts
+  |> list.map(craft_anti_ship_damage_dealt)
+  |> list.reduce(fn(a, b) { a +. b })
+  |> result.unwrap(0.0)
+  |> float.to_precision(2)
 }
