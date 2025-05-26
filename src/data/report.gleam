@@ -62,11 +62,16 @@ pub type Ship {
     anti_ship_missiles: List(Missile),
     defensive_weapons: List(DefensiveWeapon),
     defensive_missiles: List(DefensiveMissile),
+    decoys: List(Decoy),
   )
 }
 
 pub type DefensiveWeapon {
   DefensiveWeapon(count: Int, weapon: Weapon)
+}
+
+pub type Decoy {
+  Decoy(name: String, carried: Int, expended: Int, seductions: Int)
 }
 
 pub type Craft {
@@ -165,6 +170,9 @@ pub fn dummy_report() {
                 successes: 2,
               ),
             ],
+            decoys: [
+              Decoy(name: "Decoy A", carried: 10, expended: 5, seductions: 3),
+            ],
           ),
         ],
         craft: [
@@ -248,6 +256,9 @@ pub fn dummy_report() {
                 interceptions: 4,
                 successes: 3,
               ),
+            ],
+            decoys: [
+              Decoy(name: "Decoy B", carried: 15, expended: 8, seductions: 5),
             ],
           ),
         ],

@@ -84,16 +84,20 @@ fn ship_detail(ship: Ship) {
     div([class("fixed-grid has-4-cols")], [div([class("grid")], gun_cards)])
   let defensive_weapon_cards =
     ship.defensive_weapons |> list.map(defensive_weapon_card)
+  let defensive_weapon_grid =
+    div([class("fixed-grid has-4-cols")], [
+      div([class("grid")], defensive_weapon_cards),
+    ])
   let defensive_missile_cards =
     ship.defensive_missiles |> list.map(defensive_missile_card)
   let defensive_missile_grid =
     div([class("fixed-grid has-4-cols")], [
       div([class("grid")], defensive_missile_cards),
     ])
-  let defensive_weapon_grid =
-    div([class("fixed-grid has-4-cols")], [
-      div([class("grid")], defensive_weapon_cards),
-    ])
+  let decoy_cards = ship.decoys |> list.map(decoy_card)
+  let decoy_grid =
+    div([class("fixed-grid has-4-cols")], [div([class("grid")], decoy_cards)])
+
   div([class("column is-three-fifths")], [
     div([], [
       p([class("title is-3")], [text(ship.name)]),
@@ -124,6 +128,21 @@ fn ship_detail(ship: Ship) {
       defensive_weapon_grid,
       h4([class("title is-4")], [text("Defensive Missiles")]),
       defensive_missile_grid,
+      h4([class("title is-4")], [text("Decoys")]),
+      decoy_grid,
+    ]),
+  ])
+}
+
+fn decoy_card(decoy: report.Decoy) {
+  div([class("cell")], [
+    p([class("title is-5")], [text(decoy.name)]),
+    p([], [
+      text("Carried: " <> int.to_string(decoy.carried)),
+      br([]),
+      text("Expended: " <> int.to_string(decoy.expended)),
+      br([]),
+      text("Seductions: " <> int.to_string(decoy.seductions)),
     ]),
   ])
 }

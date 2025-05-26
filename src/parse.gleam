@@ -788,6 +788,7 @@ type ParseShipState {
     anti_ship_missiles: List(report.Missile),
     defensive_weapons: List(DefensiveWeapon),
     defensive_missiles: List(report.DefensiveMissile),
+    decoys: List(report.Decoy),
   )
 }
 
@@ -801,6 +802,7 @@ fn parse_ship(input) {
       anti_ship_missiles: [],
       defensive_weapons: [],
       defensive_missiles: [],
+      decoys: [],
     ),
     input,
   )
@@ -839,13 +841,21 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
     }
     Ok(#(ElementStart(Tag(Name("", "Defenses"), [])), next_input)) -> {
       use
-        #(Defenses(defensive_weapons: dw, defensive_missiles: dm), next_input_2)
+        #(
+          Defenses(
+            defensive_weapons: dw,
+            defensive_missiles: dm,
+            decoys: decoys,
+          ),
+          next_input_2,
+        )
       <- try(parse_defenses(next_input))
       parse_ship_inner(
         ParseShipState(
           ..parse_state,
           defensive_weapons: dw,
           defensive_missiles: dm,
+          decoys: decoys,
         ),
         next_input_2,
       )
@@ -871,6 +881,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
           anti_ship_missiles: anti_ship_missiles,
           defensive_weapons: defensive_weapons,
           defensive_missiles: defensive_missiles,
+          decoys: decoys,
         ) -> {
           Ok(#(
             Ship(
@@ -881,6 +892,7 @@ fn parse_ship_inner(parse_state, input) -> Result(#(Ship, Input), String) {
               anti_ship_missiles: anti_ship_missiles,
               defensive_weapons: defensive_weapons,
               defensive_missiles: defensive_missiles,
+              decoys: decoys,
             ),
             next_input,
           ))
@@ -900,11 +912,12 @@ type Defenses {
   Defenses(
     defensive_weapons: List(DefensiveWeapon),
     defensive_missiles: List(report.DefensiveMissile),
+    decoys: List(report.Decoy),
   )
 }
 
 fn parse_defenses(input) {
-  parse_defenses_inner(Defenses([], []), input)
+  parse_defenses_inner(Defenses([], [], []), input)
 }
 
 fn parse_defenses_inner(
@@ -929,6 +942,10 @@ fn parse_defenses_inner(
         next_input_2,
       )
     }
+    Ok(#(ElementStart(Tag(Name("", "DecoyReports"), _)), next_input)) -> {
+      use #(decoys, next_input_2) <- try(parse_decoys(next_input))
+      parse_defenses_inner(Defenses(..defenses, decoys: decoys), next_input_2)
+    }
     Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
       use next_input_2 <- try(skip_tag(next_input))
       parse_defenses_inner(defenses, next_input_2)
@@ -937,6 +954,114 @@ fn parse_defenses_inner(
     Ok(#(xmlm.Data(data), _)) ->
       Error(string.concat(["Unexpected data at defenses: ", data]))
     Ok(#(xmlm.Dtd(_), next_input)) -> parse_defenses_inner(defenses, next_input)
+  }
+}
+
+fn parse_decoys(input) {
+  parse_decoys_inner([], input)
+}
+
+type ParseDecoyState {
+  ParseDecoyState(
+    name: Option(String),
+    carried: Option(Int),
+    expended: Option(Int),
+    seductions: Option(Int),
+  )
+}
+
+fn parse_decoys_inner(
+  decoys: List(report.Decoy),
+  input: Input,
+) -> Result(#(List(report.Decoy), Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "DecoyReport"), _)), next_input)) -> {
+      use #(decoy, next_input_2) <- try(parse_decoy(next_input))
+      parse_decoys_inner([decoy, ..decoys], next_input_2)
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input_2 <- try(skip_tag(next_input))
+      parse_decoys_inner(decoys, next_input_2)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> Ok(#(decoys, next_input))
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at decoys: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_decoys_inner(decoys, next_input)
+  }
+}
+
+fn parse_decoy(input) {
+  parse_decoy_inner(
+    ParseDecoyState(name: None, carried: None, expended: None, seductions: None),
+    input,
+  )
+}
+
+fn parse_decoy_inner(
+  parse_state: ParseDecoyState,
+  input: Input,
+) -> Result(#(report.Decoy, Input), String) {
+  case xmlm.signal(input) {
+    Error(e) -> Error(xmlm.input_error_to_string(e))
+    Ok(#(ElementStart(Tag(Name("", "MissileName"), _)), next_input)) -> {
+      use #(name, next_input_2) <- try(parse_string_element(None, next_input))
+      parse_decoy_inner(
+        ParseDecoyState(..parse_state, name: Some(name)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalCarried"), _)), next_input)) -> {
+      use #(carried, next_input_2) <- try(parse_int_element(next_input))
+      parse_decoy_inner(
+        ParseDecoyState(..parse_state, carried: Some(carried)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalExpended"), _)), next_input)) -> {
+      use #(expended, next_input_2) <- try(parse_int_element(next_input))
+      parse_decoy_inner(
+        ParseDecoyState(..parse_state, expended: Some(expended)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(Name("", "TotalSeductions"), _)), next_input)) -> {
+      use #(seductions, next_input_2) <- try(parse_int_element(next_input))
+      parse_decoy_inner(
+        ParseDecoyState(..parse_state, seductions: Some(seductions)),
+        next_input_2,
+      )
+    }
+    Ok(#(ElementStart(Tag(_, _)), next_input)) -> {
+      use next_input <- try(skip_tag(next_input))
+      parse_decoy_inner(parse_state, next_input)
+    }
+    Ok(#(xmlm.ElementEnd, next_input)) -> {
+      case parse_state {
+        ParseDecoyState(
+          name: Some(name),
+          carried: Some(carried),
+          expended: Some(expended),
+          seductions: Some(seductions),
+        ) -> {
+          Ok(#(
+            report.Decoy(
+              name: name,
+              carried: carried,
+              expended: expended,
+              seductions: seductions,
+            ),
+            next_input,
+          ))
+        }
+        _ -> {
+          Error("Missing decoy data")
+        }
+      }
+    }
+    Ok(#(xmlm.Data(data), _)) ->
+      Error(string.concat(["Unexpected data at decoy: ", data]))
+    Ok(#(xmlm.Dtd(_), next_input)) -> parse_decoy_inner(parse_state, next_input)
   }
 }
 

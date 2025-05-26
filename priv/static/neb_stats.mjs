@@ -5182,7 +5182,7 @@ var DefensiveMissile = class extends CustomType {
   }
 };
 var Ship = class extends CustomType {
-  constructor(name, class$2, damage_taken, anti_ship_weapons, anti_ship_missiles, defensive_weapons, defensive_missiles) {
+  constructor(name, class$2, damage_taken, anti_ship_weapons, anti_ship_missiles, defensive_weapons, defensive_missiles, decoys) {
     super();
     this.name = name;
     this.class = class$2;
@@ -5191,6 +5191,7 @@ var Ship = class extends CustomType {
     this.anti_ship_missiles = anti_ship_missiles;
     this.defensive_weapons = defensive_weapons;
     this.defensive_missiles = defensive_missiles;
+    this.decoys = decoys;
   }
 };
 var DefensiveWeapon = class extends CustomType {
@@ -5198,6 +5199,15 @@ var DefensiveWeapon = class extends CustomType {
     super();
     this.count = count;
     this.weapon = weapon;
+  }
+};
+var Decoy = class extends CustomType {
+  constructor(name, carried, expended, seductions) {
+    super();
+    this.name = name;
+    this.carried = carried;
+    this.expended = expended;
+    this.seductions = seductions;
   }
 };
 var Craft = class extends CustomType {
@@ -5279,6 +5289,24 @@ function update2(state, msg) {
     let _record = state;
     return new PageState(_record.report, new Some(new CraftDetail(craft)));
   }
+}
+function decoy_card(decoy) {
+  return div(
+    toList([class$("cell")]),
+    toList([
+      p(toList([class$("title is-5")]), toList([text3(decoy.name)])),
+      p(
+        toList([]),
+        toList([
+          text3("Carried: " + to_string(decoy.carried)),
+          br(toList([])),
+          text3("Expended: " + to_string(decoy.expended)),
+          br(toList([])),
+          text3("Seductions: " + to_string(decoy.seductions))
+        ])
+      )
+    ])
+  );
 }
 function defensive_weapon_card(weapon) {
   let _block;
@@ -5670,6 +5698,10 @@ function ship_detail(ship) {
   let _pipe$2 = ship.defensive_weapons;
   _block$2 = map(_pipe$2, defensive_weapon_card);
   let defensive_weapon_cards = _block$2;
+  let defensive_weapon_grid = div(
+    toList([class$("fixed-grid has-4-cols")]),
+    toList([div(toList([class$("grid")]), defensive_weapon_cards)])
+  );
   let _block$3;
   let _pipe$3 = ship.defensive_missiles;
   _block$3 = map(_pipe$3, defensive_missile_card);
@@ -5678,9 +5710,13 @@ function ship_detail(ship) {
     toList([class$("fixed-grid has-4-cols")]),
     toList([div(toList([class$("grid")]), defensive_missile_cards)])
   );
-  let defensive_weapon_grid = div(
+  let _block$4;
+  let _pipe$4 = ship.decoys;
+  _block$4 = map(_pipe$4, decoy_card);
+  let decoy_cards = _block$4;
+  let decoy_grid = div(
     toList([class$("fixed-grid has-4-cols")]),
-    toList([div(toList([class$("grid")]), defensive_weapon_cards)])
+    toList([div(toList([class$("grid")]), decoy_cards)])
   );
   return div(
     toList([class$("column is-three-fifths")]),
@@ -5728,7 +5764,9 @@ function ship_detail(ship) {
             toList([class$("title is-4")]),
             toList([text3("Defensive Missiles")])
           ),
-          defensive_missile_grid
+          defensive_missile_grid,
+          h4(toList([class$("title is-4")]), toList([text3("Decoys")])),
+          decoy_grid
         ])
       )
     ])
@@ -10216,7 +10254,7 @@ var ParseAntiShipCraftMissileState = class extends CustomType {
   }
 };
 var ParseShipState = class extends CustomType {
-  constructor(name, class$2, damage_taken, anti_ship_weapons, anti_ship_missiles, defensive_weapons, defensive_missiles) {
+  constructor(name, class$2, damage_taken, anti_ship_weapons, anti_ship_missiles, defensive_weapons, defensive_missiles, decoys) {
     super();
     this.name = name;
     this.class = class$2;
@@ -10225,13 +10263,24 @@ var ParseShipState = class extends CustomType {
     this.anti_ship_missiles = anti_ship_missiles;
     this.defensive_weapons = defensive_weapons;
     this.defensive_missiles = defensive_missiles;
+    this.decoys = decoys;
   }
 };
 var Defenses = class extends CustomType {
-  constructor(defensive_weapons, defensive_missiles) {
+  constructor(defensive_weapons, defensive_missiles, decoys) {
     super();
     this.defensive_weapons = defensive_weapons;
     this.defensive_missiles = defensive_missiles;
+    this.decoys = decoys;
+  }
+};
+var ParseDecoyState = class extends CustomType {
+  constructor(name, carried, expended, seductions) {
+    super();
+    this.name = name;
+    this.carried = carried;
+    this.expended = expended;
+    this.seductions = seductions;
   }
 };
 var ParseDefensiveMissileState = class extends CustomType {
@@ -10766,6 +10815,181 @@ function parse_anti_ship_craft_missile(input2) {
     input2
   );
 }
+function parse_decoy_inner(loop$parse_state, loop$input) {
+  while (true) {
+    let parse_state = loop$parse_state;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "MissileName") {
+      let next_input = $[0][1];
+      return try$(
+        parse_string_element(new None(), next_input),
+        (_use0) => {
+          let name = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_decoy_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseDecoyState(
+                new Some(name),
+                _record.carried,
+                _record.expended,
+                _record.seductions
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalCarried") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let carried = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_decoy_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseDecoyState(
+                _record.name,
+                new Some(carried),
+                _record.expended,
+                _record.seductions
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalExpended") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let expended = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_decoy_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseDecoyState(
+                _record.name,
+                _record.carried,
+                new Some(expended),
+                _record.seductions
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "TotalSeductions") {
+      let next_input = $[0][1];
+      return try$(
+        parse_int_element(next_input),
+        (_use0) => {
+          let seductions = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_decoy_inner(
+            (() => {
+              let _record = parse_state;
+              return new ParseDecoyState(
+                _record.name,
+                _record.carried,
+                _record.expended,
+                new Some(seductions)
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input2) => {
+          return parse_decoy_inner(parse_state, next_input2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      if (parse_state instanceof ParseDecoyState && parse_state.name instanceof Some && parse_state.carried instanceof Some && parse_state.expended instanceof Some && parse_state.seductions instanceof Some) {
+        let name = parse_state.name[0];
+        let carried = parse_state.carried[0];
+        let expended = parse_state.expended[0];
+        let seductions = parse_state.seductions[0];
+        return new Ok(
+          [new Decoy(name, carried, expended, seductions), next_input]
+        );
+      } else {
+        return new Error2("Missing decoy data");
+      }
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at decoy: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$parse_state = parse_state;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_decoy(input2) {
+  return parse_decoy_inner(
+    new ParseDecoyState(new None(), new None(), new None(), new None()),
+    input2
+  );
+}
+function parse_decoys_inner(loop$decoys, loop$input) {
+  while (true) {
+    let decoys = loop$decoys;
+    let input2 = loop$input;
+    let $ = signal(input2);
+    if (!$.isOk()) {
+      let e = $[0];
+      return new Error2(input_error_to_string(e));
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "DecoyReport") {
+      let next_input = $[0][1];
+      return try$(
+        parse_decoy(next_input),
+        (_use0) => {
+          let decoy = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_decoys_inner(prepend(decoy, decoys), next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag) {
+      let next_input = $[0][1];
+      return try$(
+        skip_tag(next_input),
+        (next_input_2) => {
+          return parse_decoys_inner(decoys, next_input_2);
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementEnd) {
+      let next_input = $[0][1];
+      return new Ok([decoys, next_input]);
+    } else if ($.isOk() && $[0][0] instanceof Data) {
+      let data = $[0][0][0];
+      return new Error2(
+        concat2(toList(["Unexpected data at decoys: ", data]))
+      );
+    } else {
+      let next_input = $[0][1];
+      loop$decoys = decoys;
+      loop$input = next_input;
+    }
+  }
+}
+function parse_decoys(input2) {
+  return parse_decoys_inner(toList([]), input2);
+}
 function parse_defensive_missile_inner(loop$parse_state, loop$input) {
   while (true) {
     let parse_state = loop$parse_state;
@@ -10943,7 +11167,7 @@ function parse_defensive_missile_inner(loop$parse_state, loop$input) {
           ]
         );
       } else {
-        echo(parse_state, "src/parse.gleam", 1075);
+        echo(parse_state, "src/parse.gleam", 1200);
         return new Error2("Missing defensive missile data");
       }
     } else if ($.isOk() && $[0][0] instanceof Data) {
@@ -11774,7 +11998,11 @@ function parse_defenses_inner(loop$defenses, loop$input) {
           return parse_defenses_inner(
             (() => {
               let _record = defenses;
-              return new Defenses(weapons, _record.defensive_missiles);
+              return new Defenses(
+                weapons,
+                _record.defensive_missiles,
+                _record.decoys
+              );
             })(),
             next_input_2
           );
@@ -11790,7 +12018,31 @@ function parse_defenses_inner(loop$defenses, loop$input) {
           return parse_defenses_inner(
             (() => {
               let _record = defenses;
-              return new Defenses(_record.defensive_weapons, missiles);
+              return new Defenses(
+                _record.defensive_weapons,
+                missiles,
+                _record.decoys
+              );
+            })(),
+            next_input_2
+          );
+        }
+      );
+    } else if ($.isOk() && $[0][0] instanceof ElementStart && $[0][0][0] instanceof Tag && $[0][0][0].name instanceof Name && $[0][0][0].name.uri === "" && $[0][0][0].name.local === "DecoyReports") {
+      let next_input = $[0][1];
+      return try$(
+        parse_decoys(next_input),
+        (_use0) => {
+          let decoys = _use0[0];
+          let next_input_2 = _use0[1];
+          return parse_defenses_inner(
+            (() => {
+              let _record = defenses;
+              return new Defenses(
+                _record.defensive_weapons,
+                _record.defensive_missiles,
+                decoys
+              );
             })(),
             next_input_2
           );
@@ -11820,7 +12072,10 @@ function parse_defenses_inner(loop$defenses, loop$input) {
   }
 }
 function parse_defenses(input2) {
-  return parse_defenses_inner(new Defenses(toList([]), toList([])), input2);
+  return parse_defenses_inner(
+    new Defenses(toList([]), toList([]), toList([])),
+    input2
+  );
 }
 function parse_anti_ship_weapons_inner(loop$anti_ship_weapons, loop$input) {
   while (true) {
@@ -12314,7 +12569,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
                 _record.anti_ship_weapons,
                 _record.anti_ship_missiles,
                 _record.defensive_weapons,
-                _record.defensive_missiles
+                _record.defensive_missiles,
+                _record.decoys
               );
             })(),
             next_input_2
@@ -12338,7 +12594,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
                 _record.anti_ship_weapons,
                 _record.anti_ship_missiles,
                 _record.defensive_weapons,
-                _record.defensive_missiles
+                _record.defensive_missiles,
+                _record.decoys
               );
             })(),
             next_input$1
@@ -12362,7 +12619,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
                 weapons,
                 _record.anti_ship_missiles,
                 _record.defensive_weapons,
-                _record.defensive_missiles
+                _record.defensive_missiles,
+                _record.decoys
               );
             })(),
             next_input$1
@@ -12386,7 +12644,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
                 _record.anti_ship_weapons,
                 weapons,
                 _record.defensive_weapons,
-                _record.defensive_missiles
+                _record.defensive_missiles,
+                _record.decoys
               );
             })(),
             next_input$1
@@ -12400,6 +12659,7 @@ function parse_ship_inner(loop$parse_state, loop$input) {
         (_use0) => {
           let dw = _use0[0].defensive_weapons;
           let dm = _use0[0].defensive_missiles;
+          let decoys = _use0[0].decoys;
           let next_input_2 = _use0[1];
           return parse_ship_inner(
             (() => {
@@ -12411,7 +12671,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
                 _record.anti_ship_weapons,
                 _record.anti_ship_missiles,
                 dw,
-                dm
+                dm,
+                decoys
               );
             })(),
             next_input_2
@@ -12435,7 +12696,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
                 _record.anti_ship_weapons,
                 _record.anti_ship_missiles,
                 _record.defensive_weapons,
-                _record.defensive_missiles
+                _record.defensive_missiles,
+                _record.decoys
               );
             })(),
             next_input_2
@@ -12460,6 +12722,7 @@ function parse_ship_inner(loop$parse_state, loop$input) {
         let anti_ship_missiles = parse_state.anti_ship_missiles;
         let defensive_weapons = parse_state.defensive_weapons;
         let defensive_missiles = parse_state.defensive_missiles;
+        let decoys = parse_state.decoys;
         return new Ok(
           [
             new Ship(
@@ -12469,7 +12732,8 @@ function parse_ship_inner(loop$parse_state, loop$input) {
               anti_ship_weapons,
               anti_ship_missiles,
               defensive_weapons,
-              defensive_missiles
+              defensive_missiles,
+              decoys
             ),
             next_input
           ]
@@ -12495,6 +12759,7 @@ function parse_ship(input2) {
       new None(),
       new None(),
       new None(),
+      toList([]),
       toList([]),
       toList([]),
       toList([]),
